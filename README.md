@@ -1,4 +1,4 @@
-# Analysis Kit
+# Analysis Kit App
 
 An R Shiny application for the Mixed Migration Centre. It turns a 4Mi dataset
 and a **List of Analysis** workbook into a branded, MMC-styled results workbook —
@@ -56,15 +56,14 @@ reaches them if a workbook asks for them:
 | Package | Needed for | Install |
 |---|---|---|
 | `srvyr` | confidence intervals (an analysis row with a `level`) | `install.packages("srvyr")` |
-| `analysistools` | the same | `remotes::install_github("impact-initiatives/analysistools")` |
-| `cleaningtools` | rebuilding select_multiple parent columns | `remotes::install_github("impact-initiatives/cleaningtools")` |
+
 
 If you never set a `level`, you never need them — the fast tabulation engine
 produces the same point estimates without a survey design.
 
 ### Run it
 
-Open `analysiskit.Rproj` in RStudio and:
+Open `analysiskitapp.Rproj` in RStudio and:
 
 ```r
 shiny::runApp()
@@ -288,8 +287,6 @@ If you hit `RcppArmadillo [required by survey]`:
 
 ```r
 install.packages(c("RcppArmadillo", "srvyr"))
-remotes::install_github("impact-initiatives/analysistools")
-remotes::install_github("impact-initiatives/cleaningtools")
 ```
 
 then run `source("R/generate_manifest.R")` again.
