@@ -40,7 +40,7 @@ ui <- fluidPage(
   includeCSS("www/styles.css"),
   tags$header(
     class = "app-header",
-    titlePanel("Analysis Kit"),
+    titlePanel("Analysis Kit App"),
     tags$img(
       src = "logo.png",
       alt = "Mixed Migration Centre",
@@ -105,7 +105,10 @@ ui <- fluidPage(
             ak_section(
               "Checks",
               uiOutput("check_badges"),
-              div(class = "table-scroll ak-problems", tableOutput("loa_problems"))
+              div(
+                class = "table-scroll ak-problems",
+                tableOutput("loa_problems")
+              )
             ),
             ak_section(
               "Variable coverage",
@@ -139,7 +142,6 @@ ui <- fluidPage(
 
 
 server <- function(input, output, session) {
-
   # ---------------------------------------------------------------------------
   # Dataset
   # ---------------------------------------------------------------------------
@@ -157,7 +159,10 @@ server <- function(input, output, session) {
       result <- tryCatch(
         read_uploaded_dataset(input$dataset),
         error = function(error) {
-          structure(list(message = conditionMessage(error)), class = "dataset_error")
+          structure(
+            list(message = conditionMessage(error)),
+            class = "dataset_error"
+          )
         }
       )
 
@@ -195,7 +200,10 @@ server <- function(input, output, session) {
       result <- tryCatch(
         read_loa_workbook(input$loa$datapath, filename = input$loa$name),
         error = function(error) {
-          structure(list(message = conditionMessage(error)), class = "loa_error")
+          structure(
+            list(message = conditionMessage(error)),
+            class = "loa_error"
+          )
         }
       )
 
@@ -251,7 +259,12 @@ server <- function(input, output, session) {
   destination_mode <- ak_destination_mode()
 
   volumes <- c(Home = path.expand("~"), shinyFiles::getVolumes()())
-  shinyFiles::shinyDirChoose(input, "folder", roots = volumes, session = session)
+  shinyFiles::shinyDirChoose(
+    input,
+    "folder",
+    roots = volumes,
+    session = session
+  )
 
   output$folder_label <- renderUI({
     tags$label(class = "control-label", destination_mode$label)
@@ -286,10 +299,16 @@ server <- function(input, output, session) {
 
   output$folder_status <- renderUI({
     if (!destination_mode$pick_folder) {
-      return(ak_status(destination_mode$explanation, destination_mode$status_type))
+      return(ak_status(
+        destination_mode$explanation,
+        destination_mode$status_type
+      ))
     }
     if (is.null(output_folder())) {
-      return(ak_status(destination_mode$explanation, destination_mode$status_type))
+      return(ak_status(
+        destination_mode$explanation,
+        destination_mode$status_type
+      ))
     }
     if (!is.null(folder_problem())) {
       return(ak_status(folder_problem(), "error"))
@@ -305,7 +324,10 @@ server <- function(input, output, session) {
     filename = "analysiskit_loa_template.xlsx",
     content = function(file) {
       template <- "docs/loa_template.xlsx"
-      validate(need(file.exists(template), "The template is missing from docs/."))
+      validate(need(
+        file.exists(template),
+        "The template is missing from docs/."
+      ))
       file.copy(template, file, overwrite = TRUE)
     }
   )
@@ -325,7 +347,11 @@ server <- function(input, output, session) {
     }
     tags$div(
       class = "ak-download",
-      downloadButton("results_file", "Download the results workbook", class = "btn-primary")
+      downloadButton(
+        "results_file",
+        "Download the results workbook",
+        class = "btn-primary"
+      )
     )
   })
 
@@ -382,7 +408,8 @@ server <- function(input, output, session) {
         if (destination_mode$pick_folder) {
           sprintf(
             "Analyses complete. Saved as %s in %s.",
-            basename(saved_path()), dirname(saved_path())
+            basename(saved_path()),
+            dirname(saved_path())
           )
         } else {
           sprintf(
@@ -518,7 +545,8 @@ server <- function(input, output, session) {
       return(ak_status(
         sprintf(
           "All %d variable(s) named in the workbook are in %s.",
-          total, uploaded_dataset()$filename
+          total,
+          uploaded_dataset()$filename
         ),
         "success"
       ))
@@ -531,7 +559,9 @@ server <- function(input, output, session) {
         total,
         uploaded_dataset()$filename
       ),
-      if (any(loa_coverage_severity(coverage$role[!coverage$present]) == "error")) {
+      if (
+        any(loa_coverage_severity(coverage$role[!coverage$present]) == "error")
+      ) {
         "error"
       } else {
         "warning"
@@ -624,10 +654,14 @@ server <- function(input, output, session) {
     }
 
     withProgress(message = "Running analyses", value = 0, {
-      setProgress(0.03, detail = sprintf(
-        "%d analyses across %d grouping variable(s)",
-        nrow(spec$loa), length(spec$group_variables)
-      ))
+      setProgress(
+        0.03,
+        detail = sprintf(
+          "%d analyses across %d grouping variable(s)",
+          nrow(spec$loa),
+          length(spec$group_variables)
+        )
+      )
 
       # The pipeline reports its own progress through message(). Those messages
       # drive the bar and are kept as a run log: they carry the diagnostics an
@@ -641,7 +675,9 @@ server <- function(input, output, session) {
       step <- 0L
       note <- function(text) {
         text <- trimws(sub("^-->\\s*", "", text))
-        if (nzchar(text)) run_log(c(run_log(), text))
+        if (nzchar(text)) {
+          run_log(c(run_log(), text))
+        }
         text
       }
 
@@ -649,7 +685,10 @@ server <- function(input, output, session) {
         tryCatch(
           run_analysis_spec(dataset, spec, verbose = TRUE),
           error = function(error) {
-            structure(list(message = conditionMessage(error)), class = "run_error")
+            structure(
+              list(message = conditionMessage(error)),
+              class = "run_error"
+            )
           }
         ),
         message = function(m) {
@@ -684,7 +723,10 @@ server <- function(input, output, session) {
             verbose = TRUE
           ),
           error = function(error) {
-            structure(list(message = conditionMessage(error)), class = "run_error")
+            structure(
+              list(message = conditionMessage(error)),
+              class = "run_error"
+            )
           }
         ),
         message = function(m) {
@@ -742,7 +784,8 @@ server <- function(input, output, session) {
         } else {
           "Produced %d rows and %d columns. Download %s using the button above.%s"
         },
-        nrow(results$combined_results), ncol(results$combined_results),
+        nrow(results$combined_results),
+        ncol(results$combined_results),
         basename(saved_path()),
         if (destination_mode$pick_folder) dirname(saved_path()) else ""
       ),
@@ -756,10 +799,15 @@ server <- function(input, output, session) {
 
     data.frame(
       Measure = c(
-        "Saved as", if (destination_mode$pick_folder) "Folder" else "Delivery",
-        "Result rows", "Result columns",
-        "Grouping variables", "Selection counts", "Choice combinations",
-        "Exclusive combinations", "Excluded choices"
+        "Saved as",
+        if (destination_mode$pick_folder) "Folder" else "Delivery",
+        "Result rows",
+        "Result columns",
+        "Grouping variables",
+        "Selection counts",
+        "Choice combinations",
+        "Exclusive combinations",
+        "Excluded choices"
       ),
       Value = c(
         if (is.null(saved_path())) "not saved" else basename(saved_path()),
@@ -772,7 +820,9 @@ server <- function(input, output, session) {
         },
         format(nrow(results$combined_results), big.mark = ","),
         format(ncol(results$combined_results), big.mark = ","),
-        format(length(unique(stats::na.omit(results$column_map$group_variable)))),
+        format(length(unique(stats::na.omit(
+          results$column_map$group_variable
+        )))),
         format(nrow(results$selection_counts)),
         format(nrow(results$choice_combinations)),
         format(nrow(results$exclusive_combinations %||% data.frame())),
@@ -791,7 +841,8 @@ server <- function(input, output, session) {
       # raw table here would display spacer and heading markers as rows of NA
       # that are not in the file the user just received.
       wide <- ak_prepare_for_export(
-        results$combined_results, ak_export_settings(results, analysis_spec())$layout
+        results$combined_results,
+        ak_export_settings(results, analysis_spec())$layout
       )
       # A wide table can run to thousands of columns; showing all of them would
       # hang the browser rather than inform anyone.
