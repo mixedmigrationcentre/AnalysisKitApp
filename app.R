@@ -858,7 +858,10 @@ server <- function(input, output, session) {
     if (is.null(results)) {
       return(tagList())
     }
-    ak_exclusive_base_panel(results$exclusive_combinations)
+    ak_exclusive_base_panel(
+      results$choice_combinations,
+      results$exclusive_combinations
+    )
   })
 
   output$run_log <- renderUI({

@@ -201,7 +201,22 @@ count_combinations = list(
 )
 ```
 
-Row order within a question sets the bit order used to build the combination labels.
+Row order within a question sets the order the combination rows appear in.
+
+This sheet reports **only the respondents who selected more than one choice**, and
+says whether anything outside the listed choices was selected. For the two choices
+above that is five rows:
+
+| row | means |
+|---|---|
+| `Economic + Conflict only` | both listed choices and nothing else |
+| `Economic + Conflict + Other` | both, plus at least one unlisted choice |
+| `Economic + Other` | Economic, not Conflict, plus something unlisted |
+| `Conflict + Other` | Conflict, not Economic, plus something unlisted |
+| `Other multiple selection` | more than one choice, none of them listed |
+
+The respondents who selected exactly one choice are reported by
+`count_exclusive_combinations` instead — see 5b. The two sheets share a denominator.
 
 **Validation** is delegated to `ck_check_choice_combinations()`, which already covers the
 hard parts: a choice label that matches no child column (with a "did you mean" suggestion),
@@ -214,51 +229,67 @@ select_multiple. The reader adds only: blank `analysis_var` or `choice_label` is
 ## 5b. Sheet `count_exclusive_combinations`
 
 The same shape as `count_combinations` — `analysis_var`, `choice_label`,
-`display_name`, optional `include` — asking the **strict** version of the same
-question.
+`display_name`, optional `include` — reporting the **other half** of the same
+question: the respondents who selected exactly one choice.
 
 | | `count_combinations` | `count_exclusive_combinations` |
 |---|---|---|
-| *Economic* means | selected Economic, whatever else | selected Economic **and nothing else at all** |
-| Row labels | `Economic` | `Economic only` |
-| "no listed choice" row | `None of these` | `Other choices only` |
+| reports | respondents who selected **more than one** choice | respondents who selected **exactly one** |
+| row for the listed choices | `Economic + Conflict only`, `Economic + Other`, … | `Economic only` |
+| "no listed choice" row | `Other multiple selection` | `Other single selection` |
 | `analysis_type` | `combination_select_multiple` | `exclusive_combination_select_multiple` |
 
-A question can carry **both** blocks; fill in both sheets to get both.
+A question can carry **both** blocks; fill in both sheets to get both. They are
+designed to be used together.
 
-### ⚠ These rows sit on a smaller denominator than everything else
+### The two blocks share one denominator
 
-A respondent who selected a listed choice *together with* an unlisted one
-belongs to none of the categories and leaves the base entirely. That is what
-"only" means, and it is invisible in the finished workbook — the percentages
-look like every other percentage.
+Both sit on the same base: everyone who answered the question and has at least
+one choice recorded, minus anyone removed by `exclude_choices`. So the rows of
+the two blocks **taken together add to 100%**, and each block on its own adds to
+the share of the sample it covers — five rows summing to, say, 43% and three
+rows summing to 57%.
 
-The pipeline counts them per question in
-`exclusive_combinations$n_mixed_dropped`, and the app reports it as a warning on
-the Results tab:
+The respondents the other block reports are held in the denominator without a
+row of their own. Set `count_combinations_single_label` or
+`count_exclusive_combinations_multiple_label` to give them a visible row
+instead — useful when only one of the two sheets is filled in, where the rows
+would otherwise add to less than 100% with nothing on the sheet saying why. The
+pipeline warns in that case.
 
-> Q78: 312 respondent(s) (18.4% of those who answered) selected one of these
-> choices together with an unlisted one, and are outside this base.
+### ⚠ One group is outside both blocks
 
-**Footnote it wherever these percentages are published.** Two tables in the same
-workbook, both labelled as percentages of respondents, will not share a
-denominator.
+A respondent who answered but has **no choice recorded at all** — never asked,
+or asked and left blank — is outside the shared base. The pipeline counts them
+per question in `choice_combinations$n_no_selection`, and the app reports it as
+a warning on the Results tab:
+
+> Q78: 312 respondent(s) (18.4% of those who answered) answered but have no
+> choice recorded, and are outside this base.
+
+**Footnote it wherever these percentages are published** when the number is
+material: the combination rows then describe slightly fewer people than the
+question's own choice percentages do.
 
 ### Settings
 
-Only three are its own. Everything else — `_ignore_case`, `_joiner`, `_order`,
-`_spacer`, `_title_suffix` and `max_combination_choices` — is shared with
-`count_combinations` by design, so the two blocks stay consistent.
+`_ignore_case`, `_joiner` and `_order` are shared with `count_combinations` by
+design, so the two blocks stay consistent. The rest are its own.
 
 | setting | default |
 |---|---|
-| `count_exclusive_combinations_heading` | `Exclusive choice combination` |
-| `count_exclusive_combinations_suffix` | `" only"` |
-| `count_exclusive_combinations_none_label` | `Other choices only` |
+| `count_exclusive_combinations_heading` | `Single choices (of those who selected only one choice)` |
+| `count_exclusive_combinations_only_suffix` | `" only"` |
+| `count_exclusive_combinations_other_label` | `Other single selection` |
+| `count_exclusive_combinations_multiple_label` | *(empty — no row)* |
+| `count_exclusive_combinations_spacer` | `TRUE` |
+| `count_exclusive_combinations_title_suffix` | *(empty)* |
+| `max_exclusive_choices` | `20` |
 
 **Validation** is delegated to `ck_check_choice_combinations()`, the same
 checker, called with `arg_name = "count_exclusive_combinations"` so its messages
-name the sheet you actually wrote in.
+name the sheet you actually wrote in, and `mode = "single"` so the row-count
+ceiling is counted the way this block produces rows (k + 1, not 2^(k+1) - k - 1).
 
 ---
 
@@ -366,13 +397,19 @@ reason as `exclude_choices`. The reader assembles them as
 | setting | type | default |
 |---|---|---|
 | `count_combinations_order` | enum | `descending` (\| `ascending`) |
-| `count_combinations_none_label` | chr | `None of these` |
 | `count_combinations_joiner` | chr | ` + ` |
-| `count_combinations_heading` | chr | `Choice combination` |
+| `count_combinations_only_suffix` | chr | ` only` |
+| `count_combinations_other_label` | chr | `Other` |
+| `count_combinations_other_multiple_label` | chr | `Other multiple selection` |
+| `count_combinations_single_label` | chr | *(empty — no row)* |
+| `count_combinations_heading` | chr | `Choice combinations (of those who selected more than one choice)` |
 | `count_combinations_spacer` | lgl | `TRUE` |
 | `count_combinations_title_suffix` | chr | *(empty)* |
 | `count_combinations_ignore_case` | lgl | `TRUE` |
 | `max_combination_choices` | num | `6` |
+
+The `count_exclusive_combinations_*` keys and `max_exclusive_choices` are listed
+in 5b.
 
 ### 7.2 Deliberately not settable
 

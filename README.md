@@ -129,29 +129,36 @@ mapping to the dataset *and* to every other sheet, so `Q27` works in the
 
 One column, `analysis_var`, one row per select_multiple parent.
 
-### `count_combinations` — which combination of choices they picked
+### `count_combinations` — what the multiple-selectors picked
 
 | analysis_var | choice_label | display_name |
 |---|---|---|
 | Q78 | Economic reasons | Economic |
 | Q78 | Armed conflict, generalised violence, and insecurity | Conflict |
 
-Gives four mutually exclusive rows — *Economic + Conflict*, *Economic*,
-*Conflict*, *None of these* — that add to 100%. `choice_label` must match the
+Reports the respondents who selected **more than one** choice, and says whether
+anything outside the listed choices was selected — five rows for the two above:
+*Economic + Conflict only*, *Economic + Conflict + Other*, *Economic + Other*,
+*Conflict + Other*, *Other multiple selection*. `choice_label` must match the
 export exactly, punctuation and all.
 
-### `count_exclusive_combinations` — the strict version
+### `count_exclusive_combinations` — what the single-selectors picked
 
-Same three columns. `count_combinations` asks *"selected Economic, whatever
-else"*; this asks *"selected Economic and nothing else at all"*. Rows read
-*Economic only*, and the catch-all is *Other choices only*. A question can carry
-both blocks.
+Same three columns, the other half of the same question: the respondents who
+selected **exactly one** choice. Rows read *Economic only*, *Conflict only* and
+*Other single selection*. A question can carry both blocks, and they are meant
+to be used together.
 
-> **These rows use a smaller denominator than every other table in the output.**
-> Anyone who picked a listed choice together with an unlisted one belongs to no
-> category and leaves the base. The app reports how many that is per question, as
-> a warning on the Results tab — footnote it wherever you publish these
-> percentages.
+> **The two blocks share one denominator** — everyone who answered the question
+> and has at least one choice recorded, minus anyone removed by
+> `exclude_choices`. So the two blocks *taken together* add to 100%, and each on
+> its own adds to the share of the sample it covers. Fill in only one sheet and
+> its rows will add to less than 100%; the app warns when that happens.
+>
+> **One group is outside both.** A respondent who answered but has no choice
+> recorded at all is outside that base. The app reports how many that is per
+> question, as a warning on the Results tab — footnote it wherever you publish
+> these percentages.
 
 ### `exclude_choices` — labels that leave the denominator
 
@@ -165,7 +172,7 @@ merely hidden.
 
 ### `settings` — everything else
 
-Two columns, `setting` and `value`. 42 keys are accepted, covering every
+Two columns, `setting` and `value`. 49 keys are accepted, covering every
 remaining argument of the analysis pipeline. A misspelled key is a *fatal error*,
 not a silent skip — a typo that was ignored would look exactly like a setting
 that had been applied.
