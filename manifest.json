@@ -1958,7 +1958,7 @@
       "description": {
         "Package": "readxl",
         "Title": "Read Excel Files",
-        "Version": "1.5.0",
+        "Version": "1.5.0.1",
         "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = \"aut\",\n           comment = c(ORCID = \"0000-0003-4757-117X\")),\n    person(\"Jennifer\", \"Bryan\", , \"jenny@posit.co\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0002-6983-2759\")),\n    person(\"Posit, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = \"Copyright holder of all R code and all C/C++ code without explicit copyright attribution\"),\n    person(\"Marcin\", \"Kalicinski\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included RapidXML code\"),\n    person(\"Komarov Valery\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Christophe Leitienne\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Bob Colbert\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"David Hoerl\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Evan Miller\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\")\n  )",
         "Description": "Import excel files into R. Supports '.xls' via the embedded\n    'libxls' C library <https://github.com/libxls/libxls> and '.xlsx' via\n    the embedded 'RapidXML' C++ library\n    <https://rapidxml.sourceforge.net/>.  Works on Windows, Mac and Linux\n    without external dependencies.",
         "License": "MIT + file LICENSE",
@@ -1976,19 +1976,19 @@
         "Encoding": "UTF-8",
         "Note": "libxls v1.6.3 c199d13",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-05-16 14:11:44 UTC; jenny",
+        "Packaged": "2026-09-16 07:49:42 UTC; ripley",
         "Author": "Hadley Wickham [aut] (ORCID: <https://orcid.org/0000-0003-4757-117X>),\n  Jennifer Bryan [aut, cre] (ORCID:\n    <https://orcid.org/0000-0002-6983-2759>),\n  Posit, PBC [cph, fnd] (Copyright holder of all R code and all C/C++\n    code without explicit copyright attribution),\n  Marcin Kalicinski [ctb, cph] (Author of included RapidXML code),\n  Komarov Valery [ctb, cph] (Author of included libxls code),\n  Christophe Leitienne [ctb, cph] (Author of included libxls code),\n  Bob Colbert [ctb, cph] (Author of included libxls code),\n  David Hoerl [ctb, cph] (Author of included libxls code),\n  Evan Miller [ctb, cph] (Author of included libxls code)",
         "Maintainer": "Jennifer Bryan <jenny@posit.co>",
         "Repository": "CRAN",
-        "Date/Publication": "2026-05-16 21:50:23 UTC",
-        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-06-30 04:28:25 UTC; windows",
+        "Date/Publication": "2026-09-16 07:53:07 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-09-17 07:06:09 UTC; windows",
         "Archs": "x64",
         "RemoteType": "standard",
         "RemotePkgRef": "readxl",
         "RemoteRef": "readxl",
-        "RemoteRepos": "https://cran.rstudio.com/",
-        "RemotePkgPlatform": "x86_64-w64-mingw32",
-        "RemoteSha": "1.5.0"
+        "RemoteRepos": "https://cran.rstudio.com",
+        "RemotePkgPlatform": "source",
+        "RemoteSha": "1.5.0.1"
       }
     },
     "rematch": {
@@ -2773,13 +2773,13 @@
   },
   "files": {
     "app.R": {
-      "checksum": "d9898861d81e6d69d6517ea0ccbf02a7"
+      "checksum": "56b9442005ca2aae16edb8f57a1f3e14"
     },
     "docs/loa_template.xlsx": {
-      "checksum": "e15960a5302181d8a24f9908ac765f73"
+      "checksum": "fe261666f7e0a090a7d0a5b55a86eb16"
     },
     "functions/ck_analysis_ona_simplified_count_combinations.R": {
-      "checksum": "1c682b722460b25ab9d18a2452481ebb"
+      "checksum": "19f2a81f65aee713ee2eb509350030f7"
     },
     "functions/format_my_xlsx_variable_x_group_simplified_ordered_n.R": {
       "checksum": "11f83a0e477f756e4ec1f53875a6c780"
@@ -2794,13 +2794,13 @@
       "checksum": "a529c18178f001af8dd6fa0a3d183867"
     },
     "R/read_loa.R": {
-      "checksum": "8592512bf3cc444c833df254b2d275d2"
+      "checksum": "d02259d6bd448826f9ea00234fe9cbf6"
     },
     "R/setup_packages.R": {
       "checksum": "d6fd64dbd31ef077100907c49aadce67"
     },
     "R/ui_components.R": {
-      "checksum": "0aa79166f8d8c39a53922c49121b49f9"
+      "checksum": "87fc4d3e85740358b52244542b520c6f"
     },
     "www/logo.png": {
       "checksum": "ecfbb0ed4014f6f6f73297931e3e0d82"

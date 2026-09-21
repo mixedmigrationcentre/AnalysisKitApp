@@ -92,6 +92,22 @@ ck_warn <- function(...) {
 }
 
 
+#' The Row Label That Marks a Hidden Residual Category
+#'
+#' The two combination blocks sit on one shared denominator, so each derived
+#' column has to keep the respondents the other block reports - otherwise its
+#' percentages would be of its own sub-base and the two blocks would not add to
+#' 100\%. Those respondents are given this sentinel category, which is counted
+#' into \code{n_total} and then dropped from the output before the pivot.
+#'
+#' A control character is used so the sentinel cannot collide with a real choice
+#' label, however the labels were written.
+#'
+#' @return A single string.
+#' @keywords internal
+ck_hidden_level <- function() "\001ck_other_block"
+
+
 #' Default Analysis Type Labels
 #'
 #' @return A dataframe with \code{analysis_type} and \code{label_analysis_type}.
@@ -106,7 +122,7 @@ ck_analysis_type_labels <- function() {
     label_analysis_type = c(
       "Proportion (single choice)", "Proportion (multiple choice)",
       "Number of choices selected", "Combination of choices selected",
-      "Exclusive combination of choices selected",
+      "Single choice selected",
       "Mean", "Median", "Ratio"
     ),
     stringsAsFactors = FALSE
@@ -652,7 +668,12 @@ ck_resolve_choices <- function(parent,
 #' @param exclude_choices The run's \code{exclude_choices}, if any.
 #' @param max_choices Refuse more than this many focus choices per question, so
 #'   a long list cannot silently produce hundreds of rows. Default \code{6}
-#'   (64 combinations).
+#'   (121 combination rows).
+#' @param mode \code{"multiple"} (the \code{count_combinations} block, whose row
+#'   count grows as 2^(k+1) - k - 1) or \code{"single"} (the
+#'   \code{count_exclusive_combinations} block, which is k + 1 rows). Only
+#'   decides how many rows the \code{max_choices} message says the request would
+#'   produce.
 #' @param arg_name The pipeline argument being checked, used in the error text.
 #'
 #' @return The normalised specification, invisibly: a named list of named
@@ -665,7 +686,10 @@ ck_check_choice_combinations <- function(combinations,
                                          ignore_case = TRUE,
                                          exclude_choices = NULL,
                                          max_choices = 6,
+                                         mode = c("multiple", "single"),
                                          arg_name = "count_combinations") {
+  mode <- match.arg(mode)
+
   if (length(combinations) == 0) {
     return(invisible(list()))
   }
@@ -694,6 +718,12 @@ ck_check_choice_combinations <- function(combinations,
     if (isTRUE(ignore_case)) tolower(z) else z
   }
   excluded <- norm(exclude_choices)
+
+  # How many output rows k chosen choices produce, which is what max_choices is
+  # really guarding.
+  n_rows_for <- function(k) {
+    if (mode == "single") k + 1 else 2^(k + 1) - k - 1
+  }
 
   declared <- character(0)
   if (!is.null(loa) && all(c("analysis_type", "analysis_var") %in% names(loa))) {
@@ -730,10 +760,11 @@ ck_check_choice_combinations <- function(combinations,
     }
     if (length(wanted) > max_choices) {
       problems <- c(problems, paste0(
-        "'", p, "' lists ", length(wanted), " choices, which would give 2^",
-        length(wanted), " = ", 2^length(wanted),
-        " combination rows. The limit is ", max_choices,
-        " - raise max_choices only if you really want that many rows"
+        "'", p, "' lists ", length(wanted), " choices, which would give ",
+        n_rows_for(length(wanted)), " rows. The limit is ", max_choices,
+        " choices (", n_rows_for(max_choices), " rows) - raise ",
+        if (mode == "single") "max_exclusive_choices" else "max_combination_choices",
+        " only if you really want that many rows"
       ))
       next
     }
@@ -824,42 +855,160 @@ ck_check_choice_combinations <- function(combinations,
 }
 
 
+#' The Rows One Choice-Combination Block Produces
+#'
+#' Builds the row labels for a question, together with the selection pattern
+#' each row stands for, so that assigning respondents is a single
+#' \code{match()} rather than a per-row test. A pattern is a bit key over the
+#' chosen choices plus a flag for "selected at least one choice outside the
+#' chosen set".
+#'
+#' \strong{mode = "multiple"} - respondents who selected more than one choice.
+#' For each subset of the chosen choices, largest first:
+#' \itemize{
+#'   \item two or more chosen choices and nothing else: \emph{A + B only}
+#'   \item one or more chosen choices plus something unlisted: \emph{A + Other}
+#'   \item nothing chosen: \emph{Other multiple selection}
+#' }
+#' A single chosen choice and nothing else is one selection, so it has no row
+#' here - it belongs to the \code{"single"} block.
+#'
+#' \strong{mode = "single"} - respondents who selected exactly one choice:
+#' \emph{A only} for each chosen choice, then \emph{Other single selection} for
+#' the respondent whose single choice was not a chosen one.
+#'
+#' @param display Short display labels of the chosen choices, in the order they
+#'   were given.
+#' @param mode \code{"multiple"} or \code{"single"}.
+#' @param joiner Placed between display labels, and before \code{other_label}.
+#' @param only_suffix Appended to a row that means "and nothing else".
+#' @param other_label Stands for the unlisted choices in a multiple-selection
+#'   row.
+#' @param other_multiple_label Row label for more than one selection, none of
+#'   them chosen.
+#' @param other_single_label Row label for exactly one selection that is not a
+#'   chosen one.
+#' @param residual_level Optional extra level for the respondents this block
+#'   does not report but still counts in its denominator. Placed last (first
+#'   when ascending).
+#' @param order \code{"descending"} (default) or \code{"ascending"}.
+#'
+#' @return A dataframe of \code{key}, \code{other} and \code{label}, in display
+#'   order. The residual row, when present, has \code{key = NA} and takes part
+#'   in no matching.
+#' @keywords internal
+ck_combination_rows <- function(display,
+                                mode = c("multiple", "single"),
+                                joiner = " + ",
+                                only_suffix = " only",
+                                other_label = "Other",
+                                other_multiple_label = "Other multiple selection",
+                                other_single_label = "Other single selection",
+                                residual_level = NULL,
+                                order = c("descending", "ascending")) {
+  mode <- match.arg(mode)
+  order <- match.arg(order)
+
+  k <- length(display)
+  bit <- 2^(seq_len(k) - 1)
+
+  key <- numeric(0)
+  other <- logical(0)
+  label <- character(0)
+
+  add <- function(kk, oo, ll) {
+    key <<- c(key, kk)
+    other <<- c(other, oo)
+    label <<- c(label, ll)
+  }
+
+  if (mode == "single") {
+    for (j in seq_len(k)) {
+      add(bit[j], FALSE, paste0(display[j], only_suffix))
+    }
+    add(0, FALSE, other_single_label)
+  } else {
+    # Every subset of the k chosen choices, largest first, then in the order the
+    # choices were given. combn() is lexicographic, so this is deterministic.
+    sets <- unlist(
+      lapply(seq(k, 0), function(size) {
+        if (size == 0) list(integer(0)) else utils::combn(k, size, simplify = FALSE)
+      }),
+      recursive = FALSE
+    )
+
+    for (idx in sets) {
+      if (length(idx) == 0) {
+        add(0, TRUE, other_multiple_label)
+        next
+      }
+
+      set_label <- paste(display[idx], collapse = joiner)
+
+      if (length(idx) >= 2) {
+        add(sum(bit[idx]), FALSE, paste0(set_label, only_suffix))
+      }
+      add(sum(bit[idx]), TRUE, paste0(set_label, joiner, other_label))
+    }
+  }
+
+  rows <- data.frame(key = key, other = other, label = label, stringsAsFactors = FALSE)
+
+  if (order == "ascending") {
+    rows <- rows[rev(seq_len(nrow(rows))), , drop = FALSE]
+  }
+
+  if (!is.null(residual_level)) {
+    residual <- data.frame(
+      key = NA_real_, other = NA, label = residual_level,
+      stringsAsFactors = FALSE
+    )
+    rows <- if (order == "ascending") rbind(residual, rows) else rbind(rows, residual)
+  }
+
+  rownames(rows) <- NULL
+  rows
+}
+
+
 #' Report Which Combination of Choices Each Respondent Selected
 #'
 #' For each question in \code{combinations}, adds a derived categorical column
-#' recording which of the *chosen* choices that respondent selected, ignoring
-#' everything else they selected. With k choices of interest every respondent
-#' falls into exactly one of 2^k groups, so the categories are mutually
-#' exclusive and exhaustive and the percentages add to 100\%.
+#' saying which of the \emph{chosen} choices that respondent selected and
+#' whether they selected anything else besides. Because the result is an
+#' ordinary categorical column it then flows through the normal analysis -
+#' overall and across every grouping variable - with no special casing
+#' downstream.
 #'
-#' For \code{c(Economic = "Economic reasons", Conflict = "Armed conflict, ...")}
-#' that is four rows: \emph{Economic + Conflict}, \emph{Economic} (selected
-#' Economic and not Conflict, whatever else they selected), \emph{Conflict}, and
-#' \emph{None of these}.
+#' The feature comes in two halves, and a question can use either or both:
 #'
-#' Because the result is an ordinary categorical column it then flows through
-#' the normal analysis - overall and across every grouping variable - with no
-#' special casing downstream.
+#' \describe{
+#'   \item{\code{mode = "multiple"}}{Reports the respondents who selected
+#'     \strong{more than one} choice. With
+#'     \code{c(Economic = "Economic reasons", Conflict = "Armed conflict, ...")}
+#'     that is five rows: \emph{Economic + Conflict only} (those two and nothing
+#'     else), \emph{Economic + Conflict + Other} (those two plus at least one
+#'     unlisted choice), \emph{Economic + Other}, \emph{Conflict + Other}, and
+#'     \emph{Other multiple selection} (more than one choice, none of them
+#'     listed).}
+#'   \item{\code{mode = "single"}}{Reports the respondents who selected
+#'     \strong{exactly one} choice: \emph{Economic only}, \emph{Conflict only}
+#'     and \emph{Other single selection}.}
+#' }
 #'
-#' \strong{Two readings of "combination".} \code{mode = "any"} (the default)
-#' ignores every choice outside the listed ones, so \emph{Economic} means
-#' "selected Economic, did not select Conflict, and whatever else they selected
-#' does not matter". \code{mode = "only"} is strict: \emph{Economic only} means
-#' "selected Economic and nothing else at all". The strict reading is not
-#' exhaustive - a respondent who selected Economic alongside some choice outside
-#' the list belongs to none of the categories - and those respondents are
-#' dropped from the base. \strong{The result is that \code{mode = "only"} reports
-#' on a smaller and differently defined base than every other table in the run},
-#' so the number dropped is returned in the map as \code{n_mixed_dropped} and
-#' should be footnoted wherever these percentages are published.
+#' \strong{Denominator.} Both halves sit on the same base: respondents who
+#' answered the question - the parent column is non-blank, or at least one child
+#' is selected - \emph{and} have at least one choice recorded. Anyone never
+#' asked, anyone asked who left it blank, and anyone who picked a choice named
+#' in \code{exclude_choices} is \code{NA} and drops out. Because the base is
+#' shared, the rows of the two halves \emph{taken together} add to 100\%; each
+#' half on its own adds to the share of respondents it covers. The respondents
+#' the other half reports are held in the base as \code{residual_label} rather
+#' than dropped, which is what keeps \code{n_total} the same in both.
 #'
-#' \strong{Denominator.} Only respondents who answered the question are counted:
-#' the parent column is non-blank, or at least one child is selected. Anyone who
-#' was never asked, or asked and left it blank, is \code{NA} and drops out - so
-#' \emph{None of these} means "answered, but picked none of the listed choices",
-#' not "did not answer". When \code{exclude_choices} is in play, respondents who
-#' picked an excluded choice also drop out, which keeps this base identical to
-#' the one behind the question's own choice percentages.
+#' A respondent who answered but has nothing recorded at all is outside the base
+#' entirely. That number is reported per question and returned as
+#' \code{n_no_selection}, because it is otherwise invisible in the output.
 #'
 #' Run this \emph{before} \code{\link{ck_sm_children_to_binary}}: the pattern is
 #' taken from the raw selections, before the not-asked mask is applied.
@@ -869,56 +1018,75 @@ ck_check_choice_combinations <- function(combinations,
 #'   are the choice labels of interest. Name the choices to get short display
 #'   labels (\code{c(Economic = "Economic reasons")}); leave them unnamed and the
 #'   full ONA label is used.
+#' @param mode \code{"multiple"} (default) or \code{"single"}. See above.
 #' @param sm_separator Separator between parent and choice. Default \code{"/"}.
 #' @param sm_child_style \code{"auto"} (default), \code{"label"}, \code{"dummy"}.
 #' @param exclude_choices Optional choice labels whose pickers leave the base.
 #' @param ignore_case Logical. Match labels case-insensitively. Default
 #'   \code{TRUE}.
-#' @param none_label Row label for respondents who selected none of the listed
-#'   choices. Default \code{"None of these"}.
 #' @param joiner Placed between the display labels of a multi-choice
-#'   combination. Default \code{" + "}.
-#' @param mode \code{"any"} (default) ignores the choices outside the listed
-#'   ones. \code{"only"} requires that nothing outside them was selected, and
-#'   drops respondents who mixed a listed choice with an unlisted one.
-#' @param only_suffix Appended to each row label under \code{mode = "only"}, so
-#'   the strict reading is visible in the table itself. Default \code{" only"};
-#'   the \code{none_label} row is left alone.
+#'   combination, and before \code{other_label}. Default \code{" + "}.
+#' @param only_suffix Appended to a row meaning "and nothing else". Default
+#'   \code{" only"}.
+#' @param other_label Stands for the unlisted choices. Default \code{"Other"}.
+#' @param other_multiple_label Row label for respondents who selected more than
+#'   one choice, none of them listed.
+#' @param other_single_label Row label for respondents whose single selection
+#'   was not one of the listed choices.
+#' @param residual_label Row label for the respondents this block does not
+#'   report - those who selected exactly one choice when \code{mode =
+#'   "multiple"}, or more than one when \code{mode = "single"}. \code{""}
+#'   (default) keeps them in the denominator without giving them a row, which is
+#'   what makes the two blocks add to 100\% together rather than twice over.
 #' @param order Row order. \code{"descending"} (default) puts the largest
-#'   combinations first, so the "both" row leads and \code{none_label} closes.
-#'   \code{"ascending"} reverses it.
+#'   combinations first; \code{"ascending"} reverses the block.
 #' @param suffix Appended to the variable name to make the derived column name.
+#'   \code{NULL} (default) uses \code{"_choice_combination"} or
+#'   \code{"_exclusive_combination"} depending on \code{mode}.
 #' @param verbose Logical. Default \code{TRUE}.
 #'
 #' @return A list with \code{dataset} (the derived columns added) and \code{map}
-#'   (a dataframe of \code{analysis_var}, \code{combination_column},
-#'   \code{n_choices}, \code{n_combinations}, \code{n_in_base} and
-#'   \code{n_mixed_dropped}).
+#'   (\code{analysis_var}, \code{combination_column}, \code{mode},
+#'   \code{n_choices}, \code{n_combinations}, \code{n_in_base},
+#'   \code{n_in_block}, \code{n_other_block}, \code{n_no_selection},
+#'   \code{n_excluded_out} and \code{hidden_row}).
 #' @export
 ck_add_choice_combinations <- function(dataset,
                                        combinations,
+                                       mode = c("multiple", "single"),
                                        sm_separator = "/",
                                        sm_child_style = c("auto", "label", "dummy"),
                                        exclude_choices = NULL,
                                        ignore_case = TRUE,
-                                       none_label = "None of these",
                                        joiner = " + ",
-                                       mode = c("any", "only"),
                                        only_suffix = " only",
+                                       other_label = "Other",
+                                       other_multiple_label = "Other multiple selection",
+                                       other_single_label = "Other single selection",
+                                       residual_label = "",
                                        order = c("descending", "ascending"),
-                                       suffix = "_choice_combination",
+                                       suffix = NULL,
                                        verbose = TRUE) {
+  mode <- match.arg(mode)
   sm_child_style <- match.arg(sm_child_style)
   order <- match.arg(order)
-  mode <- match.arg(mode)
+
+  if (is.null(suffix)) {
+    suffix <- if (mode == "multiple") "_choice_combination" else "_exclusive_combination"
+  }
 
   empty_map <- data.frame(
     analysis_var = character(0),
     combination_column = character(0),
+    mode = character(0),
     n_choices = integer(0),
     n_combinations = integer(0),
     n_in_base = integer(0),
-    n_mixed_dropped = integer(0),
+    n_in_block = integer(0),
+    n_other_block = integer(0),
+    n_no_selection = integer(0),
+    n_excluded_out = integer(0),
+    hidden_row = character(0),
     stringsAsFactors = FALSE
   )
 
@@ -931,6 +1099,13 @@ ck_add_choice_combinations <- function(dataset,
     if (isTRUE(ignore_case)) tolower(z) else z
   }
   excluded <- norm(exclude_choices)
+
+  # An empty residual label means "keep them in the denominator but give them no
+  # row": the sentinel category is dropped from the results after estimation, by
+  # which point it has already been counted into n_total.
+  residual_label <- if (is.null(residual_label)) "" else as.character(residual_label)[1]
+  hidden <- !nzchar(trimws(residual_label))
+  residual_level <- if (hidden) ck_hidden_level() else residual_label
 
   map_rows <- list()
 
@@ -963,13 +1138,14 @@ ck_add_choice_combinations <- function(dataset,
     }
 
     # --- who is in the base --------------------------------------------------
-    selected_any <- rowSums(m$selected) > 0
+    n_selected <- rowSums(m$selected)
+    selected_any <- n_selected > 0
 
     if (p %in% names(dataset)) {
       parent_chr <- trimws(as.character(dataset[[p]]))
-      in_base <- (!is.na(parent_chr) & parent_chr != "") | selected_any
+      answered <- (!is.na(parent_chr) & parent_chr != "") | selected_any
     } else {
-      in_base <- selected_any
+      answered <- selected_any
       ck_warn(
         "Parent column '", p, "' is not in the export, so a respondent counts as ",
         "having answered only if one of their child columns is filled. Anyone ",
@@ -979,70 +1155,74 @@ ck_add_choice_combinations <- function(dataset,
 
     # Match ck_exclude_choices: a respondent who picked an excluded choice
     # leaves the question's denominator entirely, so they leave this base too.
+    excl_cols <- character(0)
+    picked_excluded <- rep(FALSE, nrow(dataset))
     n_excluded_out <- 0L
+
     if (length(excluded) > 0) {
       excl_cols <- m$columns[norm(m$suffixes) %in% excluded]
       if (length(excl_cols) > 0) {
         picked_excluded <- rowSums(m$selected[, excl_cols, drop = FALSE]) > 0
-        n_excluded_out <- sum(in_base & picked_excluded)
-        in_base <- in_base & !picked_excluded
+        n_excluded_out <- sum(answered & picked_excluded)
       }
     }
 
-    # --- which of the focus choices each respondent selected -----------------
+    # Counting a choice means counting a choice that is still in play, so the
+    # excluded children never contribute to "how many did they select".
+    if (length(excl_cols) > 0) {
+      counted <- setdiff(m$columns, excl_cols)
+      n_selected <- if (length(counted) > 0) {
+        rowSums(m$selected[, counted, drop = FALSE])
+      } else {
+        rep(0, nrow(dataset))
+      }
+    }
+
+    answered_in <- answered & !picked_excluded
+    in_base <- answered_in & n_selected >= 1
+    n_no_selection <- sum(answered_in & n_selected == 0)
+
+    # --- which of the chosen choices, and was anything else selected ---------
     flags <- matrix(FALSE, nrow = nrow(dataset), ncol = k)
     for (j in seq_len(k)) {
       flags[, j] <- rowSums(m$selected[, hits[[j]], drop = FALSE]) > 0
     }
 
-    # Under the strict reading, a respondent who selected one of the listed
-    # choices alongside a choice outside the list belongs to no category at all,
-    # so they leave the base. Selecting none of the listed choices is still a
-    # category whatever else was picked, which is why only_other is not enough
-    # on its own.
-    n_mixed_dropped <- 0L
+    focus_cols <- unique(unlist(hits, use.names = FALSE))
+    other_cols <- setdiff(m$columns, c(focus_cols, excl_cols))
 
-    if (mode == "only") {
-      other_cols <- setdiff(m$columns, unique(unlist(hits, use.names = FALSE)))
-
-      other_selected <- if (length(other_cols) > 0) {
-        rowSums(m$selected[, other_cols, drop = FALSE]) > 0
-      } else {
-        rep(FALSE, nrow(dataset))
-      }
-
-      mixed <- (rowSums(flags) > 0) & other_selected
-      n_mixed_dropped <- sum(in_base & mixed)
-      in_base <- in_base & !mixed
+    has_other <- if (length(other_cols) > 0) {
+      rowSums(m$selected[, other_cols, drop = FALSE]) > 0
+    } else {
+      rep(FALSE, nrow(dataset))
     }
 
-    # Every subset of the k focus choices, largest first, then in the order the
-    # choices were given. combn() is lexicographic, so this is deterministic.
-    sets <- unlist(
-      lapply(seq(k, 0), function(size) {
-        if (size == 0) list(integer(0)) else utils::combn(k, size, simplify = FALSE)
-      }),
-      recursive = FALSE
-    )
-    if (order == "ascending") sets <- rev(sets)
+    if (length(other_cols) == 0 && mode == "multiple") {
+      ck_note(
+        "'", p, "': every choice of this question is listed, so the '",
+        other_label, "' rows cannot happen and are reported as zero",
+        verbose = verbose
+      )
+    }
 
-    set_labels <- vapply(
-      sets,
-      function(idx) {
-        if (length(idx) == 0) {
-          return(none_label)
-        }
-        label <- paste(display[idx], collapse = joiner)
-        if (mode == "only") paste0(label, only_suffix) else label
-      },
-      character(1)
+    # --- rows, and who lands on each -----------------------------------------
+    rows <- ck_combination_rows(
+      display = display,
+      mode = mode,
+      joiner = joiner,
+      only_suffix = only_suffix,
+      other_label = other_label,
+      other_multiple_label = other_multiple_label,
+      other_single_label = other_single_label,
+      residual_level = residual_level,
+      order = order
     )
 
-    if (any(duplicated(set_labels))) {
+    if (any(duplicated(rows$label))) {
       stop(
         paste0(
           "'", p, "': two combination rows would carry the same label (",
-          paste(unique(set_labels[duplicated(set_labels)]), collapse = "; "),
+          paste(unique(rows$label[duplicated(rows$label)]), collapse = "; "),
           "). Give the choices distinct short names, e.g. ",
           "c(Economic = \"...\", Conflict = \"...\"), or change joiner."
         ),
@@ -1050,34 +1230,74 @@ ck_add_choice_combinations <- function(dataset,
       )
     }
 
-    # A bit weight per focus choice turns the selection pattern into one integer
-    # per respondent, which indexes straight into the label vector.
-    weights <- 2^(seq_len(k) - 1)
-    respondent_key <- as.vector(flags %*% weights)
-    set_key <- vapply(sets, function(idx) sum(weights[idx]), numeric(1))
+    # A bit weight per chosen choice turns the selection pattern into one
+    # integer per respondent, which indexes straight into the row table.
+    bit <- 2^(seq_len(k) - 1)
+    respondent_key <- as.vector(flags %*% bit)
 
-    value <- set_labels[match(respondent_key, set_key)]
+    # In the single-selection block a respondent has exactly one choice, so
+    # "was anything else selected" carries no information and is not matched on.
+    respondent_other <- if (mode == "single") rep(FALSE, nrow(dataset)) else has_other
+
+    lookup <- rows[!is.na(rows$key), , drop = FALSE]
+    idx <- match(
+      paste(respondent_key, respondent_other),
+      paste(lookup$key, lookup$other)
+    )
+    value <- lookup$label[idx]
+
+    in_block <- if (mode == "multiple") {
+      in_base & n_selected > 1
+    } else {
+      in_base & n_selected == 1
+    }
+
+    # The other half's respondents keep their place in the denominator.
+    value[in_base & !in_block] <- residual_level
     value[!in_base] <- NA_character_
+
+    unmatched <- sum(in_block & is.na(value))
+    if (unmatched > 0) {
+      # Only reachable when one choice label resolves to more than one child
+      # column and a respondent ticked several of them, so the selection count
+      # and the pattern disagree.
+      ck_warn(
+        "'", p, "': ", unmatched, " respondent(s) selected a pattern with no ",
+        "row - check whether two child columns carry the same choice label. ",
+        "They are reported as missing."
+      )
+    }
 
     combination_col <- paste0(p, suffix)
     # A factor keeps the rows in the intended order and keeps an empty
     # combination visible as a zero instead of dropping the row entirely.
-    dataset[[combination_col]] <- factor(value, levels = set_labels)
+    dataset[[combination_col]] <- factor(value, levels = rows$label)
 
     map_rows[[length(map_rows) + 1]] <- data.frame(
       analysis_var = p,
       combination_column = combination_col,
+      mode = mode,
       n_choices = k,
-      n_combinations = length(sets),
+      n_combinations = sum(!is.na(rows$key)),
       n_in_base = sum(in_base),
-      n_mixed_dropped = n_mixed_dropped,
+      n_in_block = sum(in_block),
+      n_other_block = sum(in_base & !in_block),
+      n_no_selection = n_no_selection,
+      n_excluded_out = n_excluded_out,
+      hidden_row = if (hidden) residual_level else "",
       stringsAsFactors = FALSE
     )
 
     ck_note(
-      "'", p, "': ", k, " choice(s) -> ", length(sets),
-      if (mode == "only") " exclusive combination(s) over " else " combination(s) over ",
-      sum(in_base), " respondent(s) who answered",
+      "'", p, "': ", k, " choice(s) -> ", sum(!is.na(rows$key)), " ",
+      if (mode == "multiple") "multiple-selection" else "single-selection",
+      " row(s) over ", sum(in_block), " respondent(s), in a base of ",
+      sum(in_base),
+      if (n_no_selection > 0) {
+        paste0(" (", n_no_selection, " answered but selected nothing, outside the base)")
+      } else {
+        ""
+      },
       if (n_excluded_out > 0) {
         paste0(" (", n_excluded_out, " dropped by exclude_choices)")
       } else {
@@ -1085,17 +1305,6 @@ ck_add_choice_combinations <- function(dataset,
       },
       verbose = verbose
     )
-
-    if (n_mixed_dropped > 0) {
-      ck_note(
-        "'", p, "': ", n_mixed_dropped, " respondent(s) (",
-        format(round(100 * n_mixed_dropped / (n_mixed_dropped + sum(in_base)), 1), nsmall = 1),
-        "% of those who answered) selected a listed choice together with an ",
-        "unlisted one and are outside this base. Footnote this - it is not the ",
-        "denominator used by the other tables",
-        verbose = verbose
-      )
-    }
   }
 
   list(
@@ -1115,9 +1324,9 @@ ck_add_choice_combinations <- function(dataset,
 #'
 #' @param count_map The \code{map} from \code{\link{ck_add_selection_counts}}.
 #' @param combination_map The \code{map} from
-#'   \code{\link{ck_add_choice_combinations}} run with \code{mode = "any"}.
+#'   \code{\link{ck_add_choice_combinations}} run with \code{mode = "multiple"}.
 #' @param exclusive_map The \code{map} from
-#'   \code{\link{ck_add_choice_combinations}} run with \code{mode = "only"}.
+#'   \code{\link{ck_add_choice_combinations}} run with \code{mode = "single"}.
 #'
 #' @return A dataframe of \code{analysis_var}, \code{derived_column} and
 #'   \code{analysis_type}.
@@ -2901,69 +3110,83 @@ ck_design_columns <- function(dataset,
 #'   label on count rows. Default \code{""}.
 #' @param count_combinations Optional named list asking, for one or more
 #'   \strong{select_multiple} questions, which \emph{combination} of a chosen set
-#'   of choices each respondent selected. Names are the parent variables, values
-#'   are the choice labels of interest; name the choices to get short row labels.
-#'   For example
+#'   of choices was selected by the respondents who selected \strong{more than
+#'   one} choice. Names are the parent variables, values are the choice labels of
+#'   interest; name the choices to get short row labels. For example
 #'   \code{list(Q78 = c(Economic = "Economic reasons", Conflict = "Armed conflict, generalised violence, and insecurity"))}
-#'   gives four rows - \emph{Economic + Conflict}, \emph{Economic} (and not
-#'   Conflict, whatever else was selected), \emph{Conflict}, \emph{None of these} -
+#'   gives five rows - \emph{Economic + Conflict only} (those two and nothing
+#'   else), \emph{Economic + Conflict + Other} (those two plus at least one
+#'   unlisted choice), \emph{Economic + Other}, \emph{Conflict + Other} and
+#'   \emph{Other multiple selection} (more than one choice, none of them listed) -
 #'   reported overall and across every grouping variable with
-#'   \code{analysis_type = "combination_select_multiple"}. Choices other than the
-#'   listed ones are ignored, so the rows are mutually exclusive and add to 100\%.
-#'   Only respondents who answered the question are in the denominator. See
-#'   \code{\link{ck_add_choice_combinations}}.
+#'   \code{analysis_type = "combination_select_multiple"}. Pair it with
+#'   \code{count_exclusive_combinations} for the respondents who selected exactly
+#'   one choice; the two blocks share a denominator and together add to 100\%.
+#'   See \code{\link{ck_add_choice_combinations}}.
 #' @param count_combinations_ignore_case Logical. Match the choice labels
-#'   case-insensitively. Default \code{TRUE}.
-#' @param count_combinations_none_label Row label for respondents who selected
-#'   none of the listed choices. Default \code{"None of these"}.
+#'   case-insensitively, in both combination blocks. Default \code{TRUE}.
 #' @param count_combinations_joiner Placed between the display labels of a
-#'   multi-choice combination. Default \code{" + "}.
+#'   multi-choice combination, and before \code{count_combinations_other_label}.
+#'   Default \code{" + "}.
+#' @param count_combinations_only_suffix Appended to a row meaning "and nothing
+#'   else". Default \code{" only"}.
+#' @param count_combinations_other_label Stands for the choices that were not
+#'   listed. Default \code{"Other"}.
+#' @param count_combinations_other_multiple_label Row label for respondents who
+#'   selected more than one choice, none of them listed. Default
+#'   \code{"Other multiple selection"}.
+#' @param count_combinations_single_label Optional row for the respondents this
+#'   block does not report - those who selected exactly one choice. \code{""}
+#'   (default) keeps them in the denominator with no row of their own, which is
+#'   what makes this block and \code{count_exclusive_combinations} add to 100\%
+#'   together rather than twice over. Set it when you use this block on its own
+#'   and want the missing share named.
 #' @param count_combinations_order \code{"descending"} (default) puts the
-#'   largest combinations first; \code{"ascending"} reverses it.
+#'   largest combinations first; \code{"ascending"} reverses it. Applies to both
+#'   combination blocks.
 #' @param count_combinations_heading Heading row above each combination block.
 #'   \code{""} inserts none.
 #' @param count_combinations_spacer Logical. Blank row above the heading.
 #'   Default \code{TRUE}.
 #' @param count_combinations_title_suffix Optionally appended to the question
 #'   label on combination rows. Default \code{""}.
-#' @param count_exclusive_combinations Optional named list, same shape as
-#'   \code{count_combinations}, asking the \emph{strict} version of the same
-#'   question: \emph{Economic only} means "selected Economic and nothing else at
-#'   all", not "selected Economic, whatever else". For the same two choices that
-#'   is \emph{Economic + Conflict only}, \emph{Economic only}, \emph{Conflict
-#'   only}, \emph{None of these}. Reported with
-#'   \code{analysis_type = "exclusive_combination_select_multiple"}, so a
-#'   question can carry both this block and the \code{count_combinations} one.
+#' @param count_exclusive_combinations Optional named list, the same shape as
+#'   \code{count_combinations}, reporting the respondents who selected
+#'   \strong{exactly one} choice. For the same two choices that is
+#'   \emph{Economic only}, \emph{Conflict only} and \emph{Other single
+#'   selection}, with
+#'   \code{analysis_type = "exclusive_combination_select_multiple"}. A question
+#'   can carry both blocks.
 #'
-#'   \strong{These rows sit on a different base.} A respondent who selected
-#'   Economic alongside a choice outside the list belongs to none of the four
-#'   categories and is dropped, so the denominator here is smaller than on every
-#'   other table in the workbook. The number dropped per question is returned in
-#'   \code{exclusive_combinations$n_mixed_dropped} - footnote it wherever these
-#'   percentages are published. The settings shared with
-#'   \code{count_combinations} (\code{_ignore_case}, \code{_none_label},
-#'   \code{_joiner}, \code{_order}, \code{_spacer}, \code{_title_suffix}) apply
-#'   to both blocks.
-#' @param count_exclusive_combinations_heading Heading row above each exclusive
-#'   combination block. \code{""} inserts none.
-#' @param count_exclusive_combinations_none_label Row label for respondents who
-#'   selected none of the listed choices in the \emph{exclusive} block. Kept
-#'   separate from \code{count_combinations_none_label} so the two blocks do not
-#'   both show a row called "None of these", which would be easy to confuse when
-#'   they sit under the same question. Default \code{"Other choices only"} -
-#'   accurate, because a respondent in this row selected nothing from the list,
-#'   so everything they did select is outside it.
-#'
-#'   Note the two rows hold the \emph{same people}: not selecting a listed
-#'   choice means never being dropped as a mixed response. Their \code{n} will
-#'   match across the two blocks while their percentages differ, because the
-#'   exclusive block divides by a smaller base. That is expected, not an error.
-#' @param count_exclusive_combinations_suffix Appended to each row label of the
-#'   exclusive block, so the strict reading is visible in the table itself.
-#'   Default \code{" only"}; the \code{none_label} row is left alone.
+#'   \strong{The two blocks share one denominator}: everyone who answered the
+#'   question and has at least one choice recorded, minus anyone removed by
+#'   \code{exclude_choices}. So the rows of the two blocks \emph{taken together}
+#'   add to 100\%, and each block on its own adds to the share of the sample it
+#'   covers. A respondent who answered but has nothing recorded at all is outside
+#'   both blocks and outside that base; the count is returned per question as
+#'   \code{n_no_selection}. The settings shared with \code{count_combinations}
+#'   (\code{_ignore_case}, \code{_joiner}, \code{_order}) apply to both blocks.
+#' @param count_exclusive_combinations_only_suffix Appended to each chosen
+#'   choice's row. Default \code{" only"}.
+#' @param count_exclusive_combinations_other_label Row label for a single
+#'   selection that is not one of the listed choices. Default
+#'   \code{"Other single selection"}.
+#' @param count_exclusive_combinations_multiple_label Optional row for the
+#'   respondents this block does not report - those who selected more than one
+#'   choice. \code{""} (default) keeps them in the denominator with no row. See
+#'   \code{count_combinations_single_label}.
+#' @param count_exclusive_combinations_heading Heading row above each
+#'   single-choice block. \code{""} inserts none.
+#' @param count_exclusive_combinations_spacer Logical. Blank row above the
+#'   heading. Default \code{TRUE}.
+#' @param count_exclusive_combinations_title_suffix Optionally appended to the
+#'   question label on single-choice rows. Default \code{""}.
 #' @param max_combination_choices Refuse more than this many choices per
-#'   question, so a long list cannot silently produce hundreds of rows. Default
-#'   \code{6}.
+#'   question in \code{count_combinations}, so a long list cannot silently
+#'   produce hundreds of rows. Default \code{6} (121 rows).
+#' @param max_exclusive_choices The same ceiling for
+#'   \code{count_exclusive_combinations}, which produces only k + 1 rows and can
+#'   therefore afford a longer list. Default \code{20}.
 #' @param fallback_level Placeholder level for LOA rows with an empty
 #'   \code{level} cell. Default \code{0.95}; the resulting interval is blanked
 #'   in the output.
@@ -3037,17 +3260,28 @@ run_group_analysis_pipeline <- function(dataset,
                                         count_selections_title_suffix = "",
                                         count_combinations = NULL,
                                         count_combinations_ignore_case = TRUE,
-                                        count_combinations_none_label = "None of these",
                                         count_combinations_joiner = " + ",
+                                        count_combinations_only_suffix = " only",
+                                        count_combinations_other_label = "Other",
+                                        count_combinations_other_multiple_label =
+                                          "Other multiple selection",
+                                        count_combinations_single_label = "",
                                         count_combinations_order = c("descending", "ascending"),
-                                        count_combinations_heading = "Choice combination",
+                                        count_combinations_heading =
+                                          "Choice combinations (of those who selected more than one choice)",
                                         count_combinations_spacer = TRUE,
                                         count_combinations_title_suffix = "",
                                         count_exclusive_combinations = NULL,
-                                        count_exclusive_combinations_heading = "Exclusive choice combination",
-                                        count_exclusive_combinations_suffix = " only",
-                                        count_exclusive_combinations_none_label = "Other choices only",
+                                        count_exclusive_combinations_only_suffix = " only",
+                                        count_exclusive_combinations_other_label =
+                                          "Other single selection",
+                                        count_exclusive_combinations_multiple_label = "",
+                                        count_exclusive_combinations_heading =
+                                          "Single choices (of those who selected only one choice)",
+                                        count_exclusive_combinations_spacer = TRUE,
+                                        count_exclusive_combinations_title_suffix = "",
                                         max_combination_choices = 6,
+                                        max_exclusive_choices = 20,
                                         fallback_level = 0.95,
                                         engine = c("auto", "fast", "survey"),
                                         min_group_n = NULL,
@@ -3123,6 +3357,7 @@ run_group_analysis_pipeline <- function(dataset,
     ignore_case = count_combinations_ignore_case,
     exclude_choices = exclude_choices,
     max_choices = max_combination_choices,
+    mode = "multiple",
     arg_name = "count_combinations"
   )
 
@@ -3133,7 +3368,8 @@ run_group_analysis_pipeline <- function(dataset,
     sm_separator = sm_separator,
     ignore_case = count_combinations_ignore_case,
     exclude_choices = exclude_choices,
-    max_choices = max_combination_choices,
+    max_choices = max_exclusive_choices,
+    mode = "single",
     arg_name = "count_exclusive_combinations"
   )
 
@@ -3208,39 +3444,71 @@ run_group_analysis_pipeline <- function(dataset,
 
   # Same reason as the counts: the combination is read off the raw selection
   # pattern, before the not-asked mask turns the children into 0/1/NA.
+  #
+  # Both blocks are built from the same input dataset and their derived columns
+  # merged afterwards, so neither can see the other's column - which matters if
+  # sm_separator is ever something a derived column name could start with.
   combos <- ck_add_choice_combinations(
     dataset = dataset,
     combinations = count_combinations,
+    mode = "multiple",
     sm_separator = sm_separator,
     sm_child_style = sm_child_style,
     exclude_choices = exclude_choices,
     ignore_case = count_combinations_ignore_case,
-    none_label = count_combinations_none_label,
     joiner = count_combinations_joiner,
+    only_suffix = count_combinations_only_suffix,
+    other_label = count_combinations_other_label,
+    other_multiple_label = count_combinations_other_multiple_label,
+    residual_label = count_combinations_single_label,
     order = count_combinations_order,
     verbose = verbose
   )
-  dataset <- combos$dataset
 
-  # The strict reading of the same question: a listed choice mixed with an
-  # unlisted one belongs to no category, so those respondents leave the base and
-  # this block reports on a smaller denominator than anything else in the run.
+  # The other half of the same question: the respondents who selected exactly
+  # one choice. It shares the base, so the two blocks add to 100% together.
   exclusive <- ck_add_choice_combinations(
     dataset = dataset,
     combinations = count_exclusive_combinations,
+    mode = "single",
     sm_separator = sm_separator,
     sm_child_style = sm_child_style,
     exclude_choices = exclude_choices,
     ignore_case = count_combinations_ignore_case,
-    none_label = count_exclusive_combinations_none_label,
-    joiner = count_combinations_joiner,
-    mode = "only",
-    only_suffix = count_exclusive_combinations_suffix,
+    only_suffix = count_exclusive_combinations_only_suffix,
+    other_single_label = count_exclusive_combinations_other_label,
+    residual_label = count_exclusive_combinations_multiple_label,
     order = count_combinations_order,
-    suffix = "_exclusive_combination",
     verbose = verbose
   )
-  dataset <- exclusive$dataset
+
+  for (cc in combos$map$combination_column) {
+    dataset[[cc]] <- combos$dataset[[cc]]
+  }
+  for (cc in exclusive$map$combination_column) {
+    dataset[[cc]] <- exclusive$dataset[[cc]]
+  }
+
+  # The two blocks share one denominator, so a question that has only one of
+  # them reports rows that add to less than 100% with nothing on the sheet
+  # saying why. Name the missing half rather than letting a reader assume the
+  # rows are the whole story.
+  lone <- unique(c(
+    setdiff(combos$map$analysis_var[combos$map$hidden_row != ""],
+            exclusive$map$analysis_var),
+    setdiff(exclusive$map$analysis_var[exclusive$map$hidden_row != ""],
+            combos$map$analysis_var)
+  ))
+  if (length(lone) > 0) {
+    ck_warn(
+      "Only one of count_combinations / count_exclusive_combinations was given for: ",
+      paste(lone, collapse = ", "),
+      ". Its rows are percentages of everyone who answered and selected at least ",
+      "one choice, so they will not add to 100% on their own. Supply the other ",
+      "block, or set count_combinations_single_label / ",
+      "count_exclusive_combinations_multiple_label to show the remainder as a row."
+    )
+  }
 
   # All three features are derived categorical columns, so everything below
   # works off one table rather than branching per feature.
@@ -3457,7 +3725,26 @@ run_group_analysis_pipeline <- function(dataset,
     }
   }
 
-  # --- 3b. Honour an empty level: no interval requested, none reported ------
+  # --- 3b. Drop the held-back half of each combination block ---------------
+  # The respondents the other block reports were carried through estimation so
+  # that n_total is the shared base; n_total is already on every row, so
+  # removing their row now leaves the denominator intact and the two blocks add
+  # to 100% together.
+  hidden_level <- ck_hidden_level()
+  drop_hidden <- !is.na(results_long$analysis_var_value) &
+    results_long$analysis_var_value == hidden_level
+
+  if (any(drop_hidden)) {
+    ck_note(
+      "dropped ", sum(drop_hidden),
+      " placeholder row(s) holding the other combination block's respondents; ",
+      "they remain in n_total",
+      verbose = verbose
+    )
+    results_long <- results_long[!drop_hidden, , drop = FALSE]
+  }
+
+  # --- 3c. Honour an empty level: no interval requested, none reported ------
   ci_cols <- intersect(c("stat_low", "stat_upp"), names(results_long))
 
   if (length(ci_cols) > 0) {
@@ -3546,7 +3833,7 @@ run_group_analysis_pipeline <- function(dataset,
     title_suffix <- c(
       count_select_multiple = count_selections_title_suffix,
       combination_select_multiple = count_combinations_title_suffix,
-      exclusive_combination_select_multiple = count_combinations_title_suffix
+      exclusive_combination_select_multiple = count_exclusive_combinations_title_suffix
     )
 
     for (tp in names(title_suffix)) {
@@ -3606,7 +3893,7 @@ run_group_analysis_pipeline <- function(dataset,
       spacer = c(
         count_select_multiple = count_selections_spacer,
         combination_select_multiple = count_combinations_spacer,
-        exclusive_combination_select_multiple = count_combinations_spacer
+        exclusive_combination_select_multiple = count_exclusive_combinations_spacer
       )
     )
   }

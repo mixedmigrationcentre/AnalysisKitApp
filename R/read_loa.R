@@ -277,22 +277,29 @@ loa_settings_schema <- function() {
     s("count_selections_label_one", "chr", arg = "count_selections_labels"),
     s("count_selections_label_many", "chr", arg = "count_selections_labels"),
 
-    # choice combinations
+    # choice combinations - the respondents who selected more than one choice
     s("count_combinations_order", "enum", "descending,ascending"),
-    s("count_combinations_none_label", "chr"),
     s("count_combinations_joiner", "chr"),
+    s("count_combinations_only_suffix", "chr"),
+    s("count_combinations_other_label", "chr"),
+    s("count_combinations_other_multiple_label", "chr"),
+    s("count_combinations_single_label", "chr"),
     s("count_combinations_heading", "chr"),
     s("count_combinations_spacer", "lgl"),
     s("count_combinations_title_suffix", "chr"),
     s("count_combinations_ignore_case", "lgl"),
     s("max_combination_choices", "num"),
 
-    # Exclusive combinations. Everything else about them - ignore_case, joiner,
-    # order, spacer, title_suffix, max_combination_choices - is shared with
-    # count_combinations by design, so only these three are their own.
+    # Single choices - the other half of the same question, on the same base.
+    # ignore_case, joiner and order are shared with count_combinations by
+    # design, so the two blocks stay consistent; everything else is its own.
+    s("count_exclusive_combinations_only_suffix", "chr"),
+    s("count_exclusive_combinations_other_label", "chr"),
+    s("count_exclusive_combinations_multiple_label", "chr"),
     s("count_exclusive_combinations_heading", "chr"),
-    s("count_exclusive_combinations_suffix", "chr"),
-    s("count_exclusive_combinations_none_label", "chr")
+    s("count_exclusive_combinations_spacer", "lgl"),
+    s("count_exclusive_combinations_title_suffix", "chr"),
+    s("max_exclusive_choices", "num")
   )
 }
 
