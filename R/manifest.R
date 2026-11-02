@@ -51,9 +51,13 @@ ak_manifest_files <- function(app_dir = ".") {
 
   files <- c(
     "app.R",
-    # Deployment tooling is not part of the application. Bundling it would
-    # also record rsconnect as a dependency of the app.
-    setdiff(relative("[.][Rr]$", "R"), c("R/manifest.R", "R/generate_manifest.R")),
+    # Deployment tooling and the workbook comparison used when optimising are
+    # not part of the application. Bundling them would also record rsconnect
+    # as a dependency of the app.
+    setdiff(
+      relative("[.][Rr]$", "R"),
+      c("R/manifest.R", "R/generate_manifest.R", "R/compare_workbooks.R")
+    ),
     relative("[.][Rr]$", "functions"),
     relative("[.](css|png|js|svg|ico)$", "www"),
     # The template is downloadable from the interface, so it has to travel with

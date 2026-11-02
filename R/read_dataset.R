@@ -39,12 +39,23 @@ read_uploaded_dataset <- function(file_info) {
     data = data,
     extension = toupper(extension),
     filename = file_info$name,
-    size = file_info$size
+    size = file_info$size,
+    # Counted once, here, rather than inside dataset_overview(). duplicated()
+    # on a data frame fingerprints every row against every column - 3.8 s on a
+    # 10,000 x 745 export - and dataset_overview() is rendered through
+    # renderTable(), so leaving it there paid that cost again on every
+    # invalidation of the dataset reactive rather than once per upload.
+    duplicate_rows = sum(duplicated(data))
   )
 }
 
 dataset_overview <- function(dataset) {
   data <- dataset$data
+
+  # Older callers (and any test building the list by hand) may not carry the
+  # count, so it is still computed here when it is absent.
+  duplicates <- dataset$duplicate_rows
+  if (is.null(duplicates)) duplicates <- sum(duplicated(data))
 
   data.frame(
     Measure = c(
@@ -61,7 +72,7 @@ dataset_overview <- function(dataset) {
       format(structure(dataset$size, class = "object_size"), units = "auto"),
       format(nrow(data), big.mark = ","),
       format(ncol(data), big.mark = ","),
-      format(sum(duplicated(data)), big.mark = ",")
+      format(duplicates, big.mark = ",")
     ),
     check.names = FALSE
   )

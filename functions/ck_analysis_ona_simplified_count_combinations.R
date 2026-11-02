@@ -83,6 +83,30 @@ ck_note <- function(..., verbose = TRUE) {
 }
 
 
+#' A Stage Timer for the Pipeline
+#'
+#' Returns a function that reports the seconds elapsed since the last call,
+#' through the same \code{message()} channel the rest of the pipeline uses - so
+#' the timings reach the app's run log and the console without any new
+#' plumbing. Without them, every statement about where a run spends its time is
+#' an extrapolation from somewhere else's dataset.
+#'
+#' @param verbose Logical. \code{FALSE} makes the timer a no-op.
+#' @return A function of one argument, the name of the stage just finished.
+#' @keywords internal
+ck_stage_timer <- function(verbose = TRUE) {
+  last <- Sys.time()
+
+  function(stage) {
+    now <- Sys.time()
+    elapsed <- as.numeric(difftime(now, last, units = "secs"))
+    last <<- now
+    ck_note(sprintf("stage %-22s %6.2f s", stage, elapsed), verbose = verbose)
+    invisible(elapsed)
+  }
+}
+
+
 #' Raise a Warning Without a Call Trace
 #' @param ... Pasted into the warning text.
 #' @keywords internal
@@ -409,10 +433,23 @@ ck_relabel_questions <- function(results_table,
 #' legitimate response category and inflates every denominator.
 #'
 #' @param dataset A dataframe.
-#' @return The dataframe with "" replaced by \code{NA} in character columns.
+#' @param columns Optional character vector of columns to clean. \code{NULL}
+#'   (the default) cleans every character column, which is what a caller
+#'   outside the pipeline should want. The pipeline passes the columns the run
+#'   actually reads: a 4Mi export is hundreds of columns wide, most of them
+#'   never named by the List of Analysis, and walking all of them cost 1.76 s
+#'   on a 10,000 x 745 export without changing a single output cell.
+#' @return The dataframe with "" replaced by \code{NA} in the character columns
+#'   it covered.
 #' @export
-ck_blank_to_na <- function(dataset) {
-  for (v in names(dataset)) {
+ck_blank_to_na <- function(dataset, columns = NULL) {
+  targets <- if (is.null(columns)) {
+    names(dataset)
+  } else {
+    intersect(unique(as.character(columns)), names(dataset))
+  }
+
+  for (v in targets) {
     if (is.character(dataset[[v]])) {
       x <- dataset[[v]]
       x[!is.na(x) & trimws(x) == ""] <- NA_character_
@@ -484,6 +521,14 @@ ck_coerce_numeric <- function(dataset, vars, verbose = TRUE) {
 #'   \code{"dummy"}.
 #' @param exclude_choices Optional choice labels to leave out entirely.
 #' @param ignore_case Logical. Match \code{exclude_choices} case-insensitively.
+#' @param cache Optional environment memoising the result per parent. One run of
+#'   the pipeline asks for the same matrix up to four times - the selection
+#'   counts, the two combination blocks and the conversion to 0/1 - and each
+#'   pass re-reads and re-trims every child column of the export. The cache is
+#'   only valid while those child columns are unchanged, which the pipeline
+#'   guarantees by building all four before
+#'   \code{\link{ck_sm_children_to_binary}} rewrites them. Pass \code{NULL}
+#'   (the default) anywhere that guarantee does not hold.
 #' @return \code{NULL} if the parent has no children, otherwise a list with
 #'   \code{selected} (logical matrix), \code{columns}, \code{suffixes} and
 #'   \code{styles}.
@@ -493,11 +538,31 @@ ck_sm_selection_matrix <- function(dataset,
                                    sm_separator = "/",
                                    sm_child_style = c("auto", "label", "dummy"),
                                    exclude_choices = NULL,
-                                   ignore_case = TRUE) {
+                                   ignore_case = TRUE,
+                                   cache = NULL) {
   sm_child_style <- match.arg(sm_child_style)
 
+  # Everything that changes the answer goes into the key. A NULL result is
+  # cached too, wrapped in a list, so "this parent has no children" is not
+  # recomputed either.
+  key <- NULL
+  if (is.environment(cache)) {
+    key <- paste(
+      parent, sm_separator, sm_child_style, isTRUE(ignore_case),
+      paste(sort(unique(as.character(exclude_choices))), collapse = "\r"),
+      sep = "\n"
+    )
+    hit <- cache[[key]]
+    if (!is.null(hit)) return(hit[[1]])
+  }
+
+  keep <- function(value) {
+    if (!is.null(key)) assign(key, list(value), envir = cache)
+    value
+  }
+
   suffixes <- ck_sm_child_suffixes(parent, names(dataset), sm_separator)
-  if (length(suffixes) == 0) return(NULL)
+  if (length(suffixes) == 0) return(keep(NULL))
 
   if (length(exclude_choices) > 0) {
     norm <- function(z) {
@@ -505,7 +570,7 @@ ck_sm_selection_matrix <- function(dataset,
       if (isTRUE(ignore_case)) tolower(z) else z
     }
     suffixes <- suffixes[!norm(unname(suffixes)) %in% norm(exclude_choices)]
-    if (length(suffixes) == 0) return(NULL)
+    if (length(suffixes) == 0) return(keep(NULL))
   }
 
   cols <- names(suffixes)
@@ -540,12 +605,12 @@ ck_sm_selection_matrix <- function(dataset,
     }
   }
 
-  list(
+  keep(list(
     selected = selected,
     columns = cols,
     suffixes = unname(suffixes),
     styles = styles
-  )
+  ))
 }
 
 
@@ -1043,6 +1108,9 @@ ck_combination_rows <- function(display,
 #' @param suffix Appended to the variable name to make the derived column name.
 #'   \code{NULL} (default) uses \code{"_choice_combination"} or
 #'   \code{"_exclusive_combination"} depending on \code{mode}.
+#' @param sm_cache Optional environment passed to
+#'   \code{\link{ck_sm_selection_matrix}}, so the child columns of a parent are
+#'   read once per run rather than once per feature.
 #' @param verbose Logical. Default \code{TRUE}.
 #'
 #' @return A list with \code{dataset} (the derived columns added) and \code{map}
@@ -1066,6 +1134,7 @@ ck_add_choice_combinations <- function(dataset,
                                        residual_label = "",
                                        order = c("descending", "ascending"),
                                        suffix = NULL,
+                                       sm_cache = NULL,
                                        verbose = TRUE) {
   mode <- match.arg(mode)
   sm_child_style <- match.arg(sm_child_style)
@@ -1121,7 +1190,10 @@ ck_add_choice_combinations <- function(dataset,
     # The full child matrix, with no exclusions applied: which choices are of
     # interest is decided below, and the base needs to know about the excluded
     # ones too.
-    m <- ck_sm_selection_matrix(dataset, p, sm_separator, sm_child_style)
+    m <- ck_sm_selection_matrix(
+      dataset, p, sm_separator, sm_child_style,
+      cache = sm_cache
+    )
     if (is.null(m)) {
       ck_warn("'", p, "' has no select_multiple child columns. Skipped.")
       next
@@ -1407,6 +1479,9 @@ ck_derived_map <- function(count_map = NULL,
 #' @param order Row order. \code{"descending"} (default) puts the largest
 #'   selection count first.
 #' @param suffix Appended to the variable name to make the derived column name.
+#' @param sm_cache Optional environment passed to
+#'   \code{\link{ck_sm_selection_matrix}}, so the child columns of a parent are
+#'   read once per run rather than once per feature.
 #' @param verbose Logical. Default \code{TRUE}.
 #' @return A list with \code{dataset} and \code{map} (\code{analysis_var},
 #'   \code{count_column}, \code{n_choices_counted}).
@@ -1425,6 +1500,7 @@ ck_add_selection_counts <- function(dataset,
                                     ),
                                     order = c("descending", "ascending"),
                                     suffix = "_selection_count",
+                                    sm_cache = NULL,
                                     verbose = TRUE) {
   sm_child_style <- match.arg(sm_child_style)
   mode <- match.arg(mode)
@@ -1453,7 +1529,8 @@ ck_add_selection_counts <- function(dataset,
   for (v in vars) {
     m <- ck_sm_selection_matrix(
       dataset, v, sm_separator, sm_child_style,
-      exclude_choices = exclude_choices, ignore_case = ignore_case
+      exclude_choices = exclude_choices, ignore_case = ignore_case,
+      cache = sm_cache
     )
 
     if (is.null(m)) {
@@ -1571,6 +1648,10 @@ ck_add_selection_counts <- function(dataset,
 #' @param sm_separator Separator between parent and choice. Default \code{"/"}.
 #' @param sm_child_style \code{"auto"} (default), \code{"label"} or
 #'   \code{"dummy"}.
+#' @param sm_cache Optional environment passed to
+#'   \code{\link{ck_sm_selection_matrix}}. This is the last reader of the raw
+#'   child columns and the function that rewrites them, so nothing may reuse
+#'   that cache afterwards.
 #' @param verbose Logical. Default \code{TRUE}.
 #' @return The dataframe with the child columns as numeric 0/1/NA.
 #' @export
@@ -1578,6 +1659,7 @@ ck_sm_children_to_binary <- function(dataset,
                                      parents,
                                      sm_separator = "/",
                                      sm_child_style = c("auto", "label", "dummy"),
+                                     sm_cache = NULL,
                                      verbose = TRUE) {
   sm_child_style <- match.arg(sm_child_style)
 
@@ -1585,7 +1667,10 @@ ck_sm_children_to_binary <- function(dataset,
   parents <- unique(parents[!is.na(parents)])
 
   for (p in parents) {
-    m <- ck_sm_selection_matrix(dataset, p, sm_separator, sm_child_style)
+    m <- ck_sm_selection_matrix(
+      dataset, p, sm_separator, sm_child_style,
+      cache = sm_cache
+    )
     if (is.null(m)) next
 
     any_selected <- rowSums(m$selected) > 0
@@ -3308,6 +3393,12 @@ run_group_analysis_pipeline <- function(dataset,
   count_selections_order <- match.arg(count_selections_order)
   count_combinations_order <- match.arg(count_combinations_order)
 
+  # Stage timings go out through the same message() channel as everything else,
+  # so they land in the app's run log without any new plumbing. They are the
+  # cheapest way to find out where a particular dataset actually spends its
+  # time, rather than reasoning from someone else's.
+  stage <- ck_stage_timer(verbose)
+
   if (!is.data.frame(dataset)) stop("dataset must be a dataframe.", call. = FALSE)
   if (!is.data.frame(loa)) stop("loa must be a dataframe.", call. = FALSE)
 
@@ -3383,6 +3474,8 @@ run_group_analysis_pipeline <- function(dataset,
     on.exit(options(old_option), add = TRUE)
   }
 
+  stage("checks")
+
   # --- 1. Label row ---------------------------------------------------------
   split <- ck_split_label_row(dataset, skip_label_row = skip_label_row)
   dataset <- split$dataset
@@ -3404,13 +3497,63 @@ run_group_analysis_pipeline <- function(dataset,
 
   # --- 2. Clean up the export ----------------------------------------------
   if (isTRUE(blank_to_na)) {
-    dataset <- ck_blank_to_na(dataset)
+    # Only the columns this run reads. The set is the one the survey design
+    # would be built from - every analysis variable, its select_multiple
+    # children, every grouping variable, the weight and the strata - plus the
+    # parents of the three derived features and their children, plus uuid when
+    # the parent columns are about to be rebuilt from it. A column outside that
+    # set is never read, so a blank left in it cannot reach an output.
+    feature_parents <- unique(c(
+      as.character(count_selections),
+      names(count_combinations),
+      names(count_exclusive_combinations)
+    ))
+    feature_parents <- feature_parents[!is.na(feature_parents)]
+
+    cleaned <- unique(c(
+      ck_design_columns(
+        dataset, loa, group_variables,
+        weight_column, strata_column, sm_separator
+      ),
+      intersect(feature_parents, names(dataset)),
+      unlist(
+        lapply(
+          feature_parents,
+          function(v) names(ck_sm_child_suffixes(v, names(dataset), sm_separator))
+        ),
+        use.names = FALSE
+      ),
+      if (isTRUE(recreate_sm_parents)) "uuid" else NULL
+    ))
+
+    # Nothing resolved - a LOA that names no column this export has. Falling
+    # back to everything keeps the old behaviour rather than silently cleaning
+    # nothing.
+    if (length(cleaned) == 0) cleaned <- names(dataset)
+
+    ck_note(
+      "blanks cleaned in ", length(cleaned), " of ", ncol(dataset), " column(s)",
+      verbose = verbose
+    )
+    dataset <- ck_blank_to_na(dataset, cleaned)
   }
 
   if (isTRUE(recreate_sm_parents)) {
+    # Reached through getFromNamespace() rather than cleaningtools:: so that
+    # renv does not record the package when it scans this file for the
+    # deployment manifest. It is needed by this one call and nothing else, and
+    # recording it drags eight further packages - V8 and Rtsne among them, both
+    # of which compile from source - into every deployment, including the ones
+    # that never set recreate_sm_parents. ck_require_pkg() still stops with the
+    # install command when the feature is genuinely asked for and the package
+    # is missing, so nothing fails silently.
     ck_require_pkg("cleaningtools", "impact-initiatives/cleaningtools")
+    recreate_parent_column <- utils::getFromNamespace(
+      "recreate_parent_column", "cleaningtools"
+    )
+
     ck_note("recreating select_multiple parent columns", verbose = verbose)
-    dataset <- cleaningtools::recreate_parent_column(
+    dataset <- recreate_parent_column(
       dataset = dataset,
       uuid_column = "uuid",
       sm_separator = sm_separator
@@ -3425,6 +3568,14 @@ run_group_analysis_pipeline <- function(dataset,
   }
   dataset <- ck_coerce_numeric(dataset, numeric_vars, verbose = verbose)
 
+  # Four features read the same select_multiple child columns: the selection
+  # counts, the two combination blocks and the conversion to 0/1. Each pass
+  # re-read and re-trimmed every child column of the export. They all run below,
+  # in order, against child columns nothing has touched yet, so one cache spans
+  # all four - and ck_sm_children_to_binary(), which rewrites those columns, is
+  # the last to read it.
+  sm_cache <- new.env(parent = emptyenv())
+
   # Selection counts are taken from the raw selection pattern, so this must run
   # before the children are masked - otherwise "no choice selected" would be
   # empty by construction, having already been removed as "not asked".
@@ -3438,6 +3589,7 @@ run_group_analysis_pipeline <- function(dataset,
     mode = count_selections_mode,
     labels = count_selections_labels,
     order = count_selections_order,
+    sm_cache = sm_cache,
     verbose = verbose
   )
   dataset <- counts$dataset
@@ -3462,6 +3614,7 @@ run_group_analysis_pipeline <- function(dataset,
     other_multiple_label = count_combinations_other_multiple_label,
     residual_label = count_combinations_single_label,
     order = count_combinations_order,
+    sm_cache = sm_cache,
     verbose = verbose
   )
 
@@ -3479,6 +3632,7 @@ run_group_analysis_pipeline <- function(dataset,
     other_single_label = count_exclusive_combinations_other_label,
     residual_label = count_exclusive_combinations_multiple_label,
     order = count_combinations_order,
+    sm_cache = sm_cache,
     verbose = verbose
   )
 
@@ -3522,6 +3676,7 @@ run_group_analysis_pipeline <- function(dataset,
       ],
       sm_separator = sm_separator,
       sm_child_style = sm_child_style,
+      sm_cache = sm_cache,
       verbose = verbose
     )
   }
@@ -3557,6 +3712,8 @@ run_group_analysis_pipeline <- function(dataset,
     verbose = verbose
   )
   dataset <- small$dataset
+
+  stage("prepare the dataset")
 
   # --- 3. Estimation --------------------------------------------------------
   # The derived columns are ordinary categorical variables, so they join the LOA
@@ -3674,6 +3831,8 @@ run_group_analysis_pipeline <- function(dataset,
       sm_separator = sm_separator
     )[["results_table"]]
   }
+
+  stage("estimate")
 
   parts <- parts[!vapply(parts, is.null, logical(1))]
   if (length(parts) == 0) {
@@ -3897,6 +4056,8 @@ run_group_analysis_pipeline <- function(dataset,
       )
     )
   }
+
+  stage("reshape and label")
 
   ck_note("ANALYSIS DONE: ", nrow(wide), " rows, ", ncol(wide), " columns", verbose = verbose)
 
