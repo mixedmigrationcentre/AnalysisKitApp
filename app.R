@@ -110,6 +110,7 @@ ui <- fluidPage(
                 tableOutput("loa_problems")
               )
             ),
+            ak_section("Estimation engine", uiOutput("engine_note")),
             ak_section(
               "Variable coverage",
               uiOutput("coverage_note"),
@@ -530,6 +531,21 @@ server <- function(input, output, session) {
     display
   })
 
+  # Shown before the run, not discovered during it: a workbook that fills in
+  # `level` everywhere routes every analysis through the survey package, whose
+  # cost grows with the number of levels of each grouping variable.
+  output$engine_note <- renderUI({
+    req(dataset_ok(), loa_ok())
+    split <- loa_engine_split(analysis_spec())
+    if (split$survey == 0) {
+      return(ak_status(
+        "No analysis asks for a confidence level, so the whole run uses the fast tabulation engine.",
+        "success"
+      ))
+    }
+    ak_engine_note(split)
+  })
+
   output$coverage_note <- renderUI({
     req(dataset_ok(), loa_ok())
 
@@ -666,19 +682,53 @@ server <- function(input, output, session) {
       # The pipeline reports its own progress through message(). Those messages
       # drive the bar and are kept as a run log: they carry the diagnostics an
       # analyst needs to see - variables skipped, choices excluded, small groups
-      # set aside - which would otherwise vanish into the console.
+      # set aside, and the stage timings - which would otherwise vanish into the
+      # console.
       #
       # There is no reliable count of messages to divide by, so rather than
       # invent a denominator each one closes a fraction of the remaining
       # distance to the end of the analysis phase. The bar always advances and
       # never overshoots.
+      #
+      # Two things are deliberately not done once per message. The log is
+      # collected into a plain vector and handed to the reactive once per phase,
+      # because run_log(c(run_log(), text)) rebuilds the whole vector every
+      # time; and the bar is updated at most five times a second, because each
+      # update is a websocket round trip and a run that skips hundreds of
+      # variables emits hundreds of lines. The step counter still advances on
+      # every message, so the bar lands in the same place either way.
       step <- 0L
+      lines <- character(0)
+      last_tick <- Sys.time()
+
       note <- function(text) {
         text <- trimws(sub("^-->\\s*", "", text))
         if (nzchar(text)) {
-          run_log(c(run_log(), text))
+          lines[[length(lines) + 1L]] <<- text
         }
         text
+      }
+
+      flush_log <- function() {
+        if (length(lines) > 0) {
+          run_log(c(run_log(), lines))
+          lines <<- character(0)
+        }
+      }
+
+      # force(): `text` is the result of note(), and a throttled tick never
+      # reaches setProgress(). Left as a promise, the log entry would simply
+      # never be recorded - every message that did not happen to move the bar
+      # would vanish from the run log.
+      tick <- function(text) {
+        force(text)
+        step <<- step + 1L
+        now <- Sys.time()
+        if (as.numeric(difftime(now, last_tick, units = "secs")) < 0.2) {
+          return(invisible(NULL))
+        }
+        last_tick <<- now
+        setProgress(0.03 + 0.72 * (1 - 0.88^step), detail = text)
       }
 
       result <- withCallingHandlers(
@@ -692,11 +742,7 @@ server <- function(input, output, session) {
           }
         ),
         message = function(m) {
-          step <<- step + 1L
-          setProgress(
-            0.03 + 0.72 * (1 - 0.88^step),
-            detail = note(conditionMessage(m))
-          )
+          tick(note(conditionMessage(m)))
           invokeRestart("muffleMessage")
         },
         warning = function(w) {
@@ -704,6 +750,8 @@ server <- function(input, output, session) {
           invokeRestart("muffleWarning")
         }
       )
+
+      flush_log()
 
       if (inherits(result, "run_error")) {
         run_error(result$message)
@@ -739,6 +787,8 @@ server <- function(input, output, session) {
         }
       )
 
+      flush_log()
+
       if (inherits(written, "run_error")) {
         # The analysis succeeded; only the saving failed. Keep the results so
         # the work is not thrown away over a bad folder.
@@ -754,6 +804,7 @@ server <- function(input, output, session) {
       analysis_results(result)
       saved_path(written)
       note(paste0("Saved to ", written))
+      flush_log()
     })
   })
 

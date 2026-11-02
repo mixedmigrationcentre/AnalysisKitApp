@@ -2773,16 +2773,16 @@
   },
   "files": {
     "app.R": {
-      "checksum": "56b9442005ca2aae16edb8f57a1f3e14"
+      "checksum": "8d63efcc9a94f326352c84bd6ecd5091"
     },
     "docs/loa_template.xlsx": {
       "checksum": "fe261666f7e0a090a7d0a5b55a86eb16"
     },
     "functions/ck_analysis_ona_simplified_count_combinations.R": {
-      "checksum": "19f2a81f65aee713ee2eb509350030f7"
+      "checksum": "c39b05a3fdae3eb480c60851a9e2713f"
     },
     "functions/format_my_xlsx_variable_x_group_simplified_ordered_n.R": {
-      "checksum": "11f83a0e477f756e4ec1f53875a6c780"
+      "checksum": "86d3643ca99f7f6597b5f56e7fcf97e2"
     },
     "R/deployment.R": {
       "checksum": "349ecd8944b5bcffa45d0e68783b95bb"
@@ -2791,16 +2791,16 @@
       "checksum": "3d3b7bcdaf609f9171c4c57f26a332aa"
     },
     "R/read_dataset.R": {
-      "checksum": "a529c18178f001af8dd6fa0a3d183867"
+      "checksum": "d4fe45e975f37bc889c9a7724f12e17c"
     },
     "R/read_loa.R": {
-      "checksum": "d02259d6bd448826f9ea00234fe9cbf6"
+      "checksum": "8fdf8dfe425d2b6cb2c530595d1bd7dd"
     },
     "R/setup_packages.R": {
       "checksum": "d6fd64dbd31ef077100907c49aadce67"
     },
     "R/ui_components.R": {
-      "checksum": "87fc4d3e85740358b52244542b520c6f"
+      "checksum": "61a6a9f37de7c15dcd14e2106f0bfc0f"
     },
     "www/logo.png": {
       "checksum": "ecfbb0ed4014f6f6f73297931e3e0d82"

@@ -63,6 +63,22 @@ The existing LoA table, unchanged. This is the sheet the current pipeline alread
 | `filter_denominator_0` | ratio only |
 | *(any other column)* | metadata such as `sector` or `indicator`, carried to the output by naming it in `settings/extra_columns` |
 
+> **`level` is the one cell that decides how long a run takes.** A row with a
+> level is estimated by the survey package, which re-subsets the data once per
+> level of each grouping variable; a row without one is estimated by fast
+> tabulation, whose cost does not grow with the disaggregation at all. Measured
+> on a 200-level grouping variable the gap is a factor of 136 *per analysis,
+> per grouping variable*. The point estimates are identical either way — the
+> design affects only the variance — so the only thing a `level` buys is
+> `stat_low` and `stat_upp`. Fill it in on the rows that publish a confidence
+> interval, and leave it empty everywhere else. The **List of Analysis** tab
+> shows how many rows will take the survey engine before you run.
+>
+> One caveat if you are clearing a `level` from a `median` row: the fast engine
+> reports the lower weighted median, the survey package interpolates, and the
+> two can differ by one observed step. For the integer 4Mi indicators they
+> agree, but check rather than assume.
+
 **`count_select_multiple` and `combination_select_multiple` are not valid `analysis_type`
 values here.** They are produced by the pipeline from the `count_selections` and
 `count_combinations` sheets and appear only in the output. Writing either into the

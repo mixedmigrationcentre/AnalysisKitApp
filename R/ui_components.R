@@ -313,6 +313,51 @@ ak_status <- function(text, type = "neutral") {
 }
 
 
+#' Say Which Estimation Engine the Run Will Use
+#'
+#' The `level` cell decides this, and it is the difference between a run that
+#' takes seconds and one that takes minutes on a wide disaggregation. Shown
+#' before the run rather than discovered during it.
+#'
+#' Nothing is rendered when no row asks for a confidence interval: that is the
+#' fast case, and it needs no explanation.
+#'
+#' @param split The list returned by `loa_engine_split()`.
+#' @return A Shiny tag, or an empty `tagList()`.
+#' @export
+ak_engine_note <- function(split) {
+  if (is.null(split) || split$analyses == 0 || split$survey == 0) {
+    return(shiny::tagList())
+  }
+
+  shiny::tagList(
+    ak_status(
+      sprintf(
+        paste0(
+          "%d of %d analyses set a confidence level, so they are estimated ",
+          "with the survey package: %s estimation(s) across %d grouping ",
+          "variable(s)."
+        ),
+        split$survey,
+        split$analyses,
+        format(split$survey_estimations, big.mark = ","),
+        split$group_variables
+      ),
+      "warning"
+    ),
+    ak_status(
+      paste0(
+        "The survey engine re-subsets the data once per level of each ",
+        "grouping variable, so its cost grows with the disaggregation while ",
+        "the fast engine's does not. Clearing the level cell on rows that do ",
+        "not publish a confidence interval is the largest speed-up available ",
+        "- the point estimates are identical either way."
+      )
+    )
+  )
+}
+
+
 #' The Combination Base, Spelled Out
 #'
 #' `count_combinations` and `count_exclusive_combinations` share one

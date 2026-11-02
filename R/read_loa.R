@@ -1683,6 +1683,57 @@ build_analysis_spec <- function(workbook, dataset = NULL) {
 }
 
 
+#' Which Estimation Engine Each Analysis Will Use
+#'
+#' The `level` cell of the `analysis` sheet is the largest performance decision
+#' in the application, and it is made in the workbook rather than in the code.
+#' A row with a level goes to `analysistools::create_analysis()`, which builds a
+#' survey design and re-subsets it once per level of the grouping variable; a
+#' row without one goes to the fast tabulation engine, whose cost does not grow
+#' with the disaggregation at all. The gap is a factor of 136 at a 200-level
+#' grouping variable.
+#'
+#' This reports the split before the run, so nobody discovers it from a
+#' progress bar that has stopped moving.
+#'
+#' @param spec An `analysis_spec` from \code{\link{build_analysis_spec}}.
+#' @return A list with `engine`, `analyses`, `survey`, `fast`,
+#'   `group_variables` and `survey_estimations` - the last being the number of
+#'   analysis-by-grouping-variable estimations the survey engine will perform.
+#' @export
+loa_engine_split <- function(spec) {
+  loa <- spec$loa
+  n <- if (is.null(loa)) 0L else nrow(loa)
+  engine <- spec$settings$engine %||% "auto"
+  groups <- max(1L, length(spec$group_variables))
+
+  supplied <- if (n == 0L || !"level" %in% names(loa)) {
+    rep(FALSE, n)
+  } else {
+    raw <- trimws(as.character(loa$level))
+    !is.na(raw) & raw != "" & raw != "NA"
+  }
+
+  # Mirrors the routing in run_group_analysis_pipeline(): "auto" asks the level
+  # cell, the other two settings decide for every row.
+  on_survey <- switch(
+    engine,
+    fast = rep(FALSE, n),
+    survey = rep(TRUE, n),
+    supplied
+  )
+
+  list(
+    engine = engine,
+    analyses = n,
+    survey = sum(on_survey),
+    fast = n - sum(on_survey),
+    group_variables = groups,
+    survey_estimations = sum(on_survey) * groups
+  )
+}
+
+
 #' @export
 print.analysis_spec <- function(x, ...) {
   cat("<analysis_spec>\n")

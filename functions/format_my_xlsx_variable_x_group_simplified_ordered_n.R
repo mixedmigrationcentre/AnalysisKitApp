@@ -217,8 +217,14 @@ add_empty_rows_between_groups <- function(df, col, sort_desc = TRUE) {
 #' @keywords internal
 ck_new_style_grid <- function() {
   sg <- new.env(parent = emptyenv())
-  sg$rect <- list()
-  sg$keys <- character(0)
+  # Rectangles live in an environment, one per name, rather than in a growing
+  # list. `sg$rect[[n]] <- value` looks like an in-place append but is not: R
+  # takes a reference to the list, copies it, and assigns the copy back, so
+  # collecting 374,000 rectangles copied the list 374,000 times. On a
+  # 90-question, 260-column sheet that was two thirds of the entire export.
+  # An environment insert is flat.
+  sg$rect <- new.env(parent = emptyenv(), hash = TRUE, size = 4096L)
+  sg$n <- 0L
   sg$styles <- list()
   sg
 }
@@ -267,9 +273,13 @@ ck_add_rect <- function(sg, key, rows, cols) {
     return(invisible(NULL))
   }
 
-  n <- length(sg$rect) + 1L
-  sg$rect[[n]] <- list(rows = as.integer(rows), cols = as.integer(cols))
-  sg$keys[n] <- key
+  n <- sg$n + 1L
+  sg$n <- n
+  assign(
+    sprintf("r%09d", n),
+    list(key = key, rows = as.integer(rows), cols = as.integer(cols)),
+    envir = sg$rect
+  )
   invisible(NULL)
 }
 
@@ -285,19 +295,24 @@ ck_add_rect <- function(sg, key, rows, cols) {
 #' @return Invisibly the number of style objects written.
 #' @keywords internal
 ck_flush_styles <- function(sg, wb, sheet) {
-  if (length(sg$rect) == 0) {
+  if (sg$n == 0L) {
     return(invisible(0L))
   }
 
-  unique_keys <- unique(sg$keys)
+  # sorted = FALSE: the rectangles of one style never overlap, so the order
+  # they are gathered in cannot change a single cell, and sorting 374,000
+  # names would reintroduce the cost this avoids.
+  rects <- as.list(sg$rect, all.names = TRUE, sorted = FALSE)
+  keys <- vapply(rects, function(r) r$key, character(1), USE.NAMES = FALSE)
+  unique_keys <- unique(keys)
 
   for (k in unique_keys) {
-    idx <- which(sg$keys == k)
+    idx <- which(keys == k)
     rr <- vector("list", length(idx))
     cc <- vector("list", length(idx))
 
     for (j in seq_along(idx)) {
-      rct <- sg$rect[[idx[j]]]
+      rct <- rects[[idx[j]]]
       rr[[j]] <- rep.int(rct$rows, times = length(rct$cols))
       cc[[j]] <- rep(rct$cols, each = length(rct$rows))
     }
@@ -313,8 +328,8 @@ ck_flush_styles <- function(sg, wb, sheet) {
     )
   }
 
-  sg$rect <- list()
-  sg$keys <- character(0)
+  sg$rect <- new.env(parent = emptyenv(), hash = TRUE, size = 4096L)
+  sg$n <- 0L
   invisible(length(unique_keys))
 }
 
@@ -528,6 +543,113 @@ ck_row_ref <- function(row, col_from, col_to) {
     openxlsx::int2col(col_to),
     row
   )
+}
+
+
+#' Write a Blocks Sheet's Cells in as Few Calls as Possible
+#'
+#' [openxlsx::writeData()] costs roughly its column count per call, almost
+#' regardless of how many rows it writes: on a 523-column sheet, sixty calls of
+#' eleven rows took 2.52 s where one call of the same 31,380 cells took 0.22 s.
+#' The blocks layout made two calls per question, so the write was sixty times
+#' more expensive than the cells justified.
+#'
+#' Here the data area of the whole sheet is written once, and only the three
+#' header rows of each question are written separately. The order is not
+#' interchangeable: `writeData()` clears every cell of the rectangle it covers,
+#' `NA` included, so the body pass leaves the header rows blank and the header
+#' pass fills them afterwards. Writing them the other way round would blank
+#' every header.
+#'
+#' A column is only batched when every question contributes the same kind of
+#' vector to it. If one question put text where another put numbers, stacking
+#' them would coerce the numbers to text and Excel would stop treating them as
+#' numbers - so a mixed column sends the whole sheet back to the per-question
+#' path, which is slower and exactly correct.
+#'
+#' @param wb An openxlsx workbook.
+#' @param sheet Sheet name.
+#' @param headers A list of `list(row, values)`, one per question: the three
+#'   header rows as a character matrix.
+#' @param bodies A list of `list(row, values)`, one per question: the data rows
+#'   as a list of one vector per sheet column.
+#' @param n_col Number of columns on the sheet.
+#' @param last_row The last row the sheet uses.
+#' @return Invisibly the number of `writeData()` calls made.
+#' @keywords internal
+ck_write_question_cells <- function(wb, sheet, headers, bodies, n_col, last_row) {
+  headers <- headers[!vapply(headers, is.null, logical(1))]
+  bodies <- bodies[!vapply(bodies, is.null, logical(1))]
+
+  if (length(bodies) == 0) {
+    return(invisible(0L))
+  }
+
+  kind <- function(v) {
+    if (is.character(v) || is.factor(v)) {
+      "character"
+    } else if (is.numeric(v) || is.logical(v)) {
+      "numeric"
+    } else {
+      "other"
+    }
+  }
+
+  modes <- vapply(
+    seq_len(n_col),
+    function(j) {
+      seen <- unique(vapply(bodies, function(b) kind(b$values[[j]]), character(1)))
+      if (length(seen) == 1L) seen else "mixed"
+    },
+    character(1)
+  )
+
+  write_one <- function(x, start_row) {
+    openxlsx::writeData(
+      wb,
+      sheet = sheet,
+      x = x,
+      startRow = start_row,
+      startCol = 1,
+      colNames = FALSE,
+      rowNames = FALSE
+    )
+  }
+
+  if (any(modes %in% c("mixed", "other"))) {
+    for (b in bodies) {
+      write_one(as.data.frame(b$values, stringsAsFactors = FALSE), b$row)
+    }
+    for (h in headers) write_one(h$values, h$row)
+    return(invisible(length(bodies) + length(headers)))
+  }
+
+  columns <- lapply(modes, function(m) {
+    if (identical(m, "character")) {
+      rep(NA_character_, last_row)
+    } else {
+      rep(NA_real_, last_row)
+    }
+  })
+
+  for (b in bodies) {
+    at <- seq.int(b$row, length.out = length(b$values[[1]]))
+    for (j in seq_len(n_col)) {
+      v <- b$values[[j]]
+      columns[[j]][at] <- if (identical(modes[[j]], "character")) {
+        as.character(v)
+      } else {
+        as.numeric(v)
+      }
+    }
+  }
+
+  names(columns) <- paste0("v", seq_len(n_col))
+  write_one(as.data.frame(columns, stringsAsFactors = FALSE), 1L)
+
+  for (h in headers) write_one(h$values, h$row)
+
+  invisible(1L + length(headers))
 }
 
 
@@ -2263,27 +2385,69 @@ ck_write_block_sheet <- function(
     borderStyle = "thin"
   )
 
+  # ck_style() builds its cache key by pasting every createStyle() argument
+  # together, which is cheap once and expensive 374,000 times. The body styles
+  # have only a few dozen distinct combinations, so they are memoised here
+  # under a short local id and ck_style() sees each of them once.
+  body_keys <- new.env(parent = emptyenv())
+  memo_key <- function(id, make) {
+    hit <- body_keys[[id]]
+    if (!is.null(hit)) {
+      return(hit)
+    }
+    value <- make()
+    assign(id, value, envir = body_keys)
+    value
+  }
+
   cat_key <- function(bottom) {
-    ck_body_style(
-      sg,
-      pal,
-      font_name,
-      fill = pal[["pale_blue"]],
-      halign = "left",
-      thick = if (bottom) c("Left", "Bottom") else "Left"
-    )
+    memo_key(paste0("cat|", bottom), function() {
+      ck_body_style(
+        sg,
+        pal,
+        font_name,
+        fill = pal[["pale_blue"]],
+        halign = "left",
+        thick = if (bottom) c("Left", "Bottom") else "Left"
+      )
+    })
   }
   cell_key <- function(shaded, edges, numfmt, bottom) {
-    ck_body_style(
-      sg,
-      pal,
-      font_name,
-      fill = if (shaded) pal[["off_white"]] else pal[["white"]],
-      halign = "center",
-      numfmt = numfmt,
-      thick = c(edges, if (bottom) "Bottom" else character(0))
+    id <- paste0(
+      "cell|", shaded, "|", paste(edges, collapse = ""), "|",
+      if (is.null(numfmt)) "" else numfmt, "|", bottom
     )
+    memo_key(id, function() {
+      ck_body_style(
+        sg,
+        pal,
+        font_name,
+        fill = if (shaded) pal[["off_white"]] else pal[["white"]],
+        halign = "center",
+        numfmt = numfmt,
+        thick = c(edges, if (bottom) "Bottom" else character(0))
+      )
+    })
   }
+
+  # Which style a statistic column takes depends only on where it sits in its
+  # grouping-variable run - the shading on the run's parity, the thick borders
+  # on whether it starts or ends one - and that does not change from question
+  # to question. Bucketing the columns once lets the body loop below add one
+  # rectangle per distinct style instead of one per column.
+  is_left <- seq_len(n_group) %in% run_start
+  is_right <- seq_len(n_group) %in% run_end
+  col_class <- paste0(
+    ifelse(parity, "s", "p"),
+    ifelse(is_left, "L", ""),
+    ifelse(is_right, "R", "")
+  )
+  class_first <- match(unique(col_class), col_class)
+  class_cols <- lapply(unique(col_class), function(cl) which(col_class == cl))
+  class_shaded <- parity[class_first]
+  class_edges <- lapply(class_first, function(g) {
+    c(if (is_left[g]) "Left", if (is_right[g]) "Right")
+  })
 
   # The colour scale is only ever applied to the Overall column of the left panel
   cf_group <- which(vapply(
@@ -2293,11 +2457,26 @@ ck_write_block_sheet <- function(
   ))
   cf_group <- if (length(cf_group) > 0) cf_group[1] else 1L
 
-  merges <- character(0)
+  questions <- which(!is.na(q_rle$values))
+
+  # Everything the loop produces is collected and written afterwards, for two
+  # separate reasons.
+  #
+  #   * openxlsx::writeData() costs roughly its column count per call whatever
+  #     its height, so two calls per question across a 523-column sheet did
+  #     sixty times the work of writing the same cells once. See
+  #     ck_write_question_cells().
+  #   * growing `merges` with c() inside the loop is quadratic: 1.85 s against
+  #     0.03 s for 20,000 refs.
+  merge_parts <- vector("list", length(questions))
+  header_parts <- vector("list", length(questions))
+  body_parts <- vector("list", length(questions))
   cf_ranges <- list()
   row <- 1L
+  last_row <- 0L
 
-  for (qi in which(!is.na(q_rle$values))) {
+  for (qk in seq_along(questions)) {
+    qi <- questions[[qk]]
     rows_q <- q_start[qi]:q_end[qi]
     n_r <- length(rows_q)
 
@@ -2359,15 +2538,7 @@ ck_write_block_sheet <- function(
       hdr[3, p$cat] <- "Category"
       hdr[3, p$first:p$last] <- head_txt
     }
-    openxlsx::writeData(
-      wb,
-      sheet = sheet,
-      x = hdr,
-      startRow = row,
-      startCol = 1,
-      colNames = FALSE,
-      rowNames = FALSE
-    )
+    header_parts[[qk]] <- list(row = row, values = hdr)
 
     # --- data ----------------------------------------------------------------
     opt <- as.character(dat[[option_col]][rows_q])
@@ -2386,35 +2557,34 @@ ck_write_block_sheet <- function(
     }
 
     names(body) <- paste0("v", seq_along(body))
-    openxlsx::writeData(
-      wb,
-      sheet = sheet,
-      x = as.data.frame(body, stringsAsFactors = FALSE),
-      startRow = row + 3L,
-      startCol = 1,
-      colNames = FALSE,
-      rowNames = FALSE
-    )
+    body_parts[[qk]] <- list(row = row + 3L, values = body)
 
     # --- merges, headers -----------------------------------------------------
-    for (p in panels) {
-      merges <- c(merges, ck_row_ref(row, p$cat, p$last))
-      for (k in seq_along(gv_runs$lengths)) {
-        merges <- c(
-          merges,
+    q_merges <- vector("list", length(panels))
+
+    for (pk in seq_along(panels)) {
+      p <- panels[[pk]]
+
+      band <- vapply(
+        seq_along(gv_runs$lengths),
+        function(b) {
           ck_row_ref(
             row + 1L,
-            p$first + run_start[k] - 1L,
-            p$first + run_end[k] - 1L
+            p$first + run_start[b] - 1L,
+            p$first + run_end[b] - 1L
           )
-        )
-      }
+        },
+        character(1)
+      )
+      q_merges[[pk]] <- c(ck_row_ref(row, p$cat, p$last), band)
 
       ck_add_rect(sg, title_key, row, p$cat:p$last)
       ck_add_rect(sg, band_key, row + 1L, p$first:p$last)
       ck_add_rect(sg, head_cat_key, row + 2L, p$cat)
       ck_add_rect(sg, head_key, row + 2L, p$first:p$last)
     }
+
+    merge_parts[[qk]] <- unlist(q_merges, use.names = FALSE)
 
     # --- body ----------------------------------------------------------------
     data_rows <- (row + 3L):(row + 2L + n_r)
@@ -2435,10 +2605,13 @@ ck_write_block_sheet <- function(
       ck_add_rect(sg, cat_key(FALSE), main_rows, p$cat)
       ck_add_rect(sg, cat_key(TRUE), last_row, p$cat)
 
-      for (g in seq_len(n_group)) {
-        edges <- c(if (g %in% run_start) "Left", if (g %in% run_end) "Right")
-        col_g <- p$first + g - 1L
-        sh <- parity[g]
+      # One rectangle per distinct style, not one per column: a 260-column
+      # disaggregation adds eight rectangles here rather than 2,080, and
+      # ck_add_rect() is called with the same cross product either way.
+      for (ci in seq_along(class_cols)) {
+        cols_ci <- p$first + class_cols[[ci]] - 1L
+        sh <- class_shaded[[ci]]
+        edges <- class_edges[[ci]]
 
         if (is.null(p$numfmt)) {
           for (fmt in c(pct_fmt, "NUMBER")) {
@@ -2447,13 +2620,13 @@ ck_write_block_sheet <- function(
               sg,
               cell_key(sh, edges, fmt, FALSE),
               rr[rr != last_row],
-              col_g
+              cols_ci
             )
             ck_add_rect(
               sg,
               cell_key(sh, edges, fmt, TRUE),
               rr[rr == last_row],
-              col_g
+              cols_ci
             )
           }
         } else {
@@ -2461,9 +2634,9 @@ ck_write_block_sheet <- function(
             sg,
             cell_key(sh, edges, p$numfmt, FALSE),
             main_rows,
-            col_g
+            cols_ci
           )
-          ck_add_rect(sg, cell_key(sh, edges, p$numfmt, TRUE), last_row, col_g)
+          ck_add_rect(sg, cell_key(sh, edges, p$numfmt, TRUE), last_row, cols_ci)
         }
       }
     }
@@ -2480,8 +2653,10 @@ ck_write_block_sheet <- function(
     row <- last_row + 3L
   }
 
+  ck_write_question_cells(wb, sheet, header_parts, body_parts, n_col, last_row)
+
   n_style_objects <- ck_flush_styles(sg, wb, sheet)
-  ck_add_merges(wb, sheet, merges)
+  ck_add_merges(wb, sheet, unlist(merge_parts, use.names = FALSE))
 
   if (length(cf_ranges) > 0) {
     if (length(cf_ranges) > max_colour_scale_rules) {
