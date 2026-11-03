@@ -113,5 +113,5 @@ before you run.
 | | |
 |---|---|
 | [docs/loa-schema.md](docs/loa-schema.md) | the workbook: every sheet, column and setting |
-| [docs/deployment.md](docs/deployment.md) | deploying to Posit Cloud |
+| [docs/deployment.md](docs/deployment.md) | deploying to Posit Connect Cloud, and what your data does there |
 | [docs/development.md](docs/development.md) | repository layout, tests, performance, known limits |

@@ -7,9 +7,9 @@
 #
 #   * Run locally, the folder picker browses the analyst's own filesystem and
 #     the results workbook is written straight into a folder they keep.
-#   * Served - Posit Cloud, shinyapps.io, Posit Connect, Shiny Server - that
-#     same picker browses the *server's* disk. A file written there is not on
-#     the analyst's computer and disappears when the container recycles. The
+#   * Served - Posit Connect Cloud, shinyapps.io, Posit Connect, Shiny Server -
+#     that same picker browses the *server's* disk. A file written there is not
+#     on the analyst's computer and disappears when the container recycles. The
 #     deliverable has to reach them as a download instead.
 #
 # Guessing wrong in the safe direction matters more than guessing right: an
@@ -26,6 +26,15 @@
 #' variable covers Posit Connect, shinyapps.io and Shiny Server. Both an option
 #' and an environment variable override it, so a deployment this does not
 #' recognise can still be told what it is.
+#'
+#' None of these signals is documented as Posit Connect Cloud's, even though
+#' one of them is in fact set there today. Guessing is the fallback, not the
+#' contract: a deployment that matters should say what it is outright, by
+#' setting `ANALYSISKIT_SERVER=true` in the host's own environment settings. If
+#' Posit changes the runtime and the guess stops working, an app that was told
+#' carries on, while an app that was guessing offers a folder picker onto the
+#' container and starts trying to install packages into a read-only library -
+#' both of them quietly.
 #'
 #' @return `TRUE` when the app appears to be served.
 #' @export
@@ -53,15 +62,35 @@ ak_is_server <- function() {
 
 #' Where a Served Run Puts Its Workbook
 #'
-#' A per-session temporary folder. The file is built there and then handed over
-#' as a download; nothing is left in a place the user might mistake for
-#' storage.
+#' A temporary folder belonging to one session. The file is built there and then
+#' handed over as a download; nothing is left in a place the user might mistake
+#' for storage.
 #'
+#' The folder is named after the session rather than shared, because
+#' `tempdir()` belongs to the R *process* and one Shiny process serves many
+#' sessions. A single `tempdir()/analysiskit-output` would therefore collect
+#' every concurrent user's results workbook in one directory, readable by any
+#' session on that instance until the process exits - which on a hosted
+#' deployment is when the container recycles, not when anyone logs off.
+#' `ak_unique_path()` keeps the filenames apart but does nothing to separate
+#' the sessions.
+#'
+#' Pass the Shiny session's own `session$token`. Each call with no token
+#' invents a fresh one, so the result is safe but not stable: settle the path
+#' once per session and reuse it, rather than calling this from a reactive.
+#'
+#' @param token A string identifying the session. Defaults to a new one.
 #' @param create Logical. Create the folder if it is not there.
 #' @return The folder path.
 #' @export
-ak_session_output_dir <- function(create = TRUE) {
-  path <- file.path(tempdir(), "analysiskit-output")
+ak_session_output_dir <- function(token = NULL, create = TRUE) {
+  if (is.null(token) || !nzchar(token)) {
+    # basename() of a tempfile() rather than the file itself: this needs an
+    # unused name, not a file, and tempfile() does not create one.
+    token <- basename(tempfile(""))
+  }
+
+  path <- file.path(tempdir(), paste0("analysiskit-output-", token))
   if (isTRUE(create) && !dir.exists(path)) {
     dir.create(path, recursive = TRUE, showWarnings = FALSE)
   }

@@ -1,10 +1,9 @@
 # Files rsconnect must never upload.
 #
-# R/manifest.R
-R/generate_manifest.R
-generate_manifest.R passes an explicit file list to writeManifest(), so this
-# is the belt-and-braces for anyone who deploys straight from the RStudio button
-# or with rsconnect::deployApp() instead.
+# R/manifest.R and generate_manifest.R hand writeManifest() an explicit list of
+# files, so a deployment made the intended way never consults this file at all.
+# It is the belt-and-braces for anyone who deploys straight from the RStudio
+# button, or with rsconnect::deployApp(), where the whole directory goes up.
 #
 # .RData and .Rhistory are the reason this file exists: they are an R session's
 # saved workspace and command history. If a dataset was loaded when the
@@ -16,6 +15,10 @@ generate_manifest.R passes an explicit file list to writeManifest(), so this
 .git
 .gitignore
 tests
+# outputs/ was removed from the repository in November 2026 - nothing in the app
+# ever wrote to it. The entry stays anyway: keeping it costs one line, and
+# having dropped it would cost whatever a future local run leaves in a folder
+# of that name.
 outputs
 docs/loa-schema.md
 R/manifest.R
