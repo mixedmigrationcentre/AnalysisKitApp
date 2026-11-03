@@ -2773,10 +2773,10 @@
   },
   "files": {
     "app.R": {
-      "checksum": "8d63efcc9a94f326352c84bd6ecd5091"
+      "checksum": "09a18018f60274aa654c5fd49a2610b5"
     },
     "docs/loa_template.xlsx": {
-      "checksum": "fe261666f7e0a090a7d0a5b55a86eb16"
+      "checksum": "30b74e7d4505afae0e0bd4962481a731"
     },
     "functions/ck_analysis_ona_simplified_count_combinations.R": {
       "checksum": "c39b05a3fdae3eb480c60851a9e2713f"
@@ -2785,7 +2785,7 @@
       "checksum": "86d3643ca99f7f6597b5f56e7fcf97e2"
     },
     "R/deployment.R": {
-      "checksum": "349ecd8944b5bcffa45d0e68783b95bb"
+      "checksum": "4f57c89aed3df403317afb6e4a590ad5"
     },
     "R/export_results.R": {
       "checksum": "3d3b7bcdaf609f9171c4c57f26a332aa"

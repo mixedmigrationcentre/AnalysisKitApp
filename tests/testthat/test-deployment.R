@@ -118,3 +118,46 @@ test_that("the session output folder exists and is writable", {
   # than accumulating somewhere a user might mistake for storage.
   expect_true(startsWith(normalizePath(path), normalizePath(tempdir())))
 })
+
+
+# The folder is named after the session for a reason that is easy to lose:
+# tempdir() belongs to the R *process*, and one Shiny process serves many
+# sessions. A single shared folder put every concurrent user's results workbook
+# in one directory, readable by any session on the instance until the container
+# recycled. These three tests are what stops that coming back.
+test_that("two sessions never share an output folder", {
+  first <- ak_session_output_dir("session-a")
+  second <- ak_session_output_dir("session-b")
+
+  expect_false(identical(first, second))
+  expect_true(dir.exists(first))
+  expect_true(dir.exists(second))
+  expect_null(ak_check_folder(first))
+})
+
+test_that("one session always gets the same output folder back", {
+  # The run writes the workbook and the download handler reads it back, so the
+  # path has to be the same answer both times.
+  expect_identical(
+    ak_session_output_dir("session-a"),
+    ak_session_output_dir("session-a")
+  )
+})
+
+test_that("an output folder asked for without a token is still a folder of its own", {
+  # A caller that forgets the token gets a safe answer rather than silently
+  # reverting to one folder shared by everybody.
+  expect_false(identical(ak_session_output_dir(), ak_session_output_dir()))
+  expect_false(identical(ak_session_output_dir(""), ak_session_output_dir("")))
+})
+
+test_that("clearing one session's folder leaves the others alone", {
+  mine <- ak_session_output_dir("session-ends")
+  theirs <- ak_session_output_dir("session-continues")
+
+  # What onSessionEnded() does in app.R.
+  unlink(mine, recursive = TRUE, force = TRUE)
+
+  expect_false(dir.exists(mine))
+  expect_true(dir.exists(theirs))
+})

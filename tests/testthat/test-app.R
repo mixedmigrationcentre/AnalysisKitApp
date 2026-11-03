@@ -480,10 +480,12 @@ test_that("served, the workbook is built in the session temp folder and offered 
 
       expect_null(run_error())
       expect_true(file.exists(saved_path()))
-      # Nowhere the user might mistake for storage.
+      # Nowhere the user might mistake for storage, and nowhere another
+      # session on the same instance is looking either.
       expect_true(
         startsWith(normalizePath(dirname(saved_path())), normalizePath(tempdir()))
       )
+      expect_equal(dirname(saved_path()), session_output_dir)
 
       expect_match(ui_text(output$download_control), "Download the results workbook")
       expect_match(ui_text(output$results_status), "Download")
@@ -531,6 +533,90 @@ test_that("locally, the folder picker and its heading are both present", {
       expect_match(ui_text(output$folder_label), "Output folder")
       expect_match(ui_text(output$folder_control), "Choose folder")
       expect_match(ui_text(output$progress_tracker), "Destination")
+    })
+  })
+})
+
+
+# shinyDirChoose() installs a server-side observer that answers directory
+# listings rooted at every volume on the machine. Not rendering the button is
+# not enough on its own: a Shiny input is a websocket message, so the observer
+# stays reachable for as long as it exists, whatever the page happens to ship.
+# Served, it must never be created at all.
+#
+# `volumes` is assigned in the same branch as the shinyDirChoose() call, so
+# whether it is in the server function's environment is the observable trace of
+# whether the handler was registered.
+#
+# `session$env`, explicitly, and `inherits = FALSE`: testServer() evaluates its
+# block in a *child* of the server function's environment, not in that
+# environment itself. A bare exists("volumes", inherits = FALSE) is therefore
+# FALSE in both modes and would make the served test pass for the wrong reason;
+# a bare exists("volumes") happens to work only because nothing else on the
+# search path is called that.
+test_that("served, the directory browser is never registered", {
+  skip_without_app()
+
+  withr::with_options(list(analysiskit.server = TRUE), {
+    shiny::testServer(app_dir, {
+      expect_false(exists("volumes", envir = session$env, inherits = FALSE))
+    })
+  })
+})
+
+test_that("locally, the directory browser is registered", {
+  skip_without_app()
+
+  # The other half of the pair: without this, the test above would also pass if
+  # the picker had simply stopped working everywhere.
+  withr::with_options(list(analysiskit.server = FALSE), {
+    shiny::testServer(app_dir, {
+      expect_true(exists("volumes", envir = session$env, inherits = FALSE))
+    })
+  })
+})
+
+test_that("served, a folder input cannot move where the workbook is written", {
+  skip_without_app()
+
+  withr::with_options(list(analysiskit.server = TRUE), {
+    shiny::testServer(app_dir, {
+      before <- output_folder()
+      session$setInputs(folder = pick_folder(path.expand("~")))
+
+      expect_equal(output_folder(), before)
+      expect_true(
+        startsWith(normalizePath(output_folder()), normalizePath(tempdir()))
+      )
+    })
+  })
+})
+
+test_that("served, the output folder belongs to this session alone", {
+  skip_without_app()
+
+  withr::with_options(list(analysiskit.server = TRUE), {
+    shiny::testServer(app_dir, {
+      expect_false(is.null(session_output_dir))
+      expect_true(dir.exists(session_output_dir))
+      expect_equal(output_folder(), session_output_dir)
+
+      # Specifically not the one folder every session used to share.
+      expect_false(
+        identical(session_output_dir, file.path(tempdir(), "analysiskit-output"))
+      )
+    })
+  })
+})
+
+test_that("locally, no session output folder is created at all", {
+  skip_without_app()
+
+  # Locally the workbook goes to the folder the user picked, so there is
+  # nothing to build in temp and nothing to clean up.
+  withr::with_options(list(analysiskit.server = FALSE), {
+    shiny::testServer(app_dir, {
+      expect_null(session_output_dir)
     })
   })
 })

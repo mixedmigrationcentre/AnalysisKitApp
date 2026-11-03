@@ -259,13 +259,40 @@ server <- function(input, output, session) {
 
   destination_mode <- ak_destination_mode()
 
-  volumes <- c(Home = path.expand("~"), shinyFiles::getVolumes()())
-  shinyFiles::shinyDirChoose(
-    input,
-    "folder",
-    roots = volumes,
-    session = session
-  )
+  # Registered only where the picker is actually offered, which is not merely
+  # tidiness. shinyDirChoose() installs a server-side observer that answers
+  # directory-listing requests rooted at every volume - served, that is the
+  # container's filesystem, from / down. Not rendering the button keeps the
+  # shinyFiles JavaScript off the page, and output_folder() ignores
+  # input$folder when the picker is absent, so nothing can be written
+  # anywhere unexpected either way. But a Shiny input is a websocket message
+  # rather than something only the shipped JavaScript can send, so the
+  # observer stays reachable for as long as it exists. Never creating it is
+  # the only version of this with nothing to reason about.
+  if (destination_mode$pick_folder) {
+    volumes <- c(Home = path.expand("~"), shinyFiles::getVolumes()())
+    shinyFiles::shinyDirChoose(
+      input,
+      "folder",
+      roots = volumes,
+      session = session
+    )
+  }
+
+  # Served, the workbook is built in a folder of this session's own and that
+  # folder is removed when the session ends. tempdir() is per R *process* and
+  # one process serves many sessions, so a single shared folder would leave
+  # one analyst's results sitting in a directory the next session can read,
+  # for the life of the instance rather than the life of the session.
+  session_output_dir <- if (destination_mode$pick_folder) {
+    NULL
+  } else {
+    dir <- ak_session_output_dir(session$token)
+    session$onSessionEnded(function() {
+      unlink(dir, recursive = TRUE, force = TRUE)
+    })
+    dir
+  }
 
   output$folder_label <- renderUI({
     tags$label(class = "control-label", destination_mode$label)
@@ -285,9 +312,13 @@ server <- function(input, output, session) {
 
   output_folder <- reactive({
     # Served, there is no folder of the user's to write into, so the workbook is
-    # built in a session temp folder and reaches them as a download.
+    # built in this session's temp folder and reaches them as a download. The
+    # path is settled once above rather than recomputed here: a reactive that
+    # returned a fresh folder on every invalidation would scatter one run's
+    # workbook across several directories, and only one of them would be
+    # cleaned up.
     if (!destination_mode$pick_folder) {
-      return(ak_session_output_dir())
+      return(session_output_dir)
     }
 
     chosen <- shinyFiles::parseDirPath(volumes, input$folder)
