@@ -1217,20 +1217,52 @@ validate_loa <- function(workbook, dataset = NULL) {
         next
       }
 
+      # The two ratio columns and analysis_var are mutually exclusive: a ratio
+      # names its variables in the former and ignores the latter, every other
+      # analysis_type does the reverse. Filling both is always a mistake, and
+      # the quiet kind - the row still runs, it just does not run what the
+      # author meant.
+      ratio_cols <- c("analysis_var_numerator", "analysis_var_denominator")
+      filled <- vapply(
+        ratio_cols,
+        function(cc) cc %in% names(analysis) && !is.na(loa_trim(analysis[[cc]][i])),
+        logical(1)
+      )
+
       if (a_type[i] == "ratio") {
-        cols <- c("analysis_var_numerator", "analysis_var_denominator")
-        have <- vapply(
-          cols,
-          function(cc) cc %in% names(analysis) && !is.na(loa_trim(analysis[[cc]][i])),
-          logical(1)
-        )
-        if (!all(have)) {
+        if (!all(filled)) {
           problem("analysis", excel_row, "error", paste0(
-            "A ratio needs both ", paste(cols[!have], collapse = " and "), "."
+            "A ratio needs both ", paste(ratio_cols[!filled], collapse = " and "), "."
           ))
         }
-      } else if (is.na(a_var[i])) {
-        problem("analysis", excel_row, "error", "analysis_var is empty.")
+
+        # Not merely redundant: ck_stack_loa() drops any row whose analysis_var
+        # is the grouping variable, so a leftover code here can make the ratio
+        # vanish from one disaggregation block and no other.
+        if (!is.na(a_var[i])) {
+          problem("analysis", excel_row, "warning", paste0(
+            "A ratio does not use analysis_var, but this row has '", a_var[i],
+            "' in it. Clear the cell: if that variable is also a ",
+            "disaggregation, the ratio will be missing from its column block."
+          ))
+        }
+      } else {
+        if (is.na(a_var[i])) {
+          problem("analysis", excel_row, "error", "analysis_var is empty.")
+        }
+
+        # Only a ratio reads these. A value here on any other row is ignored,
+        # which is usually a half-finished edit: the author meant a ratio and
+        # left analysis_type behind.
+        if (any(filled)) {
+          problem("analysis", excel_row, "warning", paste0(
+            "Only a ratio uses ", paste(ratio_cols[filled], collapse = " and "),
+            ", so the value", if (sum(filled) > 1) "s" else "", " here ",
+            if (sum(filled) > 1) "are" else "is", " ignored on this ",
+            a_type[i], " row. Set analysis_type to ratio if that was the ",
+            "intention, or clear the cell", if (sum(filled) > 1) "s" else "", "."
+          ))
+        }
       }
     }
 

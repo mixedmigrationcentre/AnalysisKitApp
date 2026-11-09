@@ -49,7 +49,7 @@ The existing LoA table, unchanged. This is the sheet the current pipeline alread
 | Column | Notes |
 |---|---|
 | `analysis_type` | one of `prop_select_one`, `prop_select_multiple`, `mean`, `median`, `ratio` |
-| `analysis_var` | dataset variable, or the select_multiple parent |
+| `analysis_var` | dataset variable, or the select_multiple parent. **Not used by `ratio`** — see 2.1 |
 
 **Optional columns**
 
@@ -57,10 +57,10 @@ The existing LoA table, unchanged. This is the sheet the current pipeline alread
 |---|---|
 | `group_var` | per-row grouping; normally left empty, since `group_analysis` handles disaggregation |
 | `level` | empty = no confidence interval (fast engine). `0.95` or `95` = interval (survey engine) |
-| `analysis_var_numerator` | required when `analysis_type` is `ratio` |
-| `analysis_var_denominator` | required when `analysis_type` is `ratio` |
-| `numerator_NA_to_0` | ratio only |
-| `filter_denominator_0` | ratio only |
+| `analysis_var_numerator` | required when `analysis_type` is `ratio`, ignored on every other row |
+| `analysis_var_denominator` | required when `analysis_type` is `ratio`, ignored on every other row |
+| `numerator_NA_to_0` | ratio only. Blank or absent = `FALSE` |
+| `filter_denominator_0` | ratio only. Blank or absent = `FALSE` |
 | *(any other column)* | metadata such as `sector` or `indicator`, carried to the output by naming it in `settings/extra_columns` |
 
 > **`level` is the one cell that decides how long a run takes.** A row with a
@@ -78,6 +78,55 @@ The existing LoA table, unchanged. This is the sheet the current pipeline alread
 > reports the lower weighted median, the survey package interpolates, and the
 > two can differ by one observed step. For the integer 4Mi indicators they
 > agree, but check rather than assume.
+
+### 2.1 Ratios
+
+`ratio` is the one analysis type that does **not** read `analysis_var`. It names two
+variables instead, in `analysis_var_numerator` and `analysis_var_denominator`, and both
+are required — the run is blocked if either is empty.
+
+| analysis_type | analysis_var | analysis_var_numerator | analysis_var_denominator |
+|---|---|---|---|
+| `ratio` | *(leave empty)* | `Q12_children` | `Q11_household_size` |
+
+**What it calculates.** Within each disaggregation group, the numerator is summed across
+respondents, the denominator is summed across the same respondents, and the two totals
+are divided:
+
+```
+stat = sum(w * numerator) / sum(w * denominator)
+```
+
+One **aggregate** ratio per group — not the mean of each respondent's own ratio. The two
+differ whenever denominators vary across respondents, and the aggregate is what 4Mi
+reporting normally wants ("children per household" across the caseload, not the average
+of per-household figures). `n` and `n_total` are both the number of contributing
+respondents, so `n / n_total` carries no information on a ratio row; `n_w` and
+`n_w_total` are the two weighted totals.
+
+Both variables are coerced to numeric before the run. Text that does not read as a number
+becomes missing, and a respondent missing on either side is dropped from that ratio — so a
+ratio's base can be smaller than either question's own base.
+
+**Not a percentage.** A percentage of respondents is `prop_select_one` or
+`prop_select_multiple`, which build their denominator from who answered (adjusted by
+`exclude_choices`). The average of a single numeric question is `mean` or `median`. Use
+`ratio` only when the numerator and the denominator are two numeric questions.
+
+**Scope of the two columns.** Only a `ratio` row reads them. A value left in them on any
+other row is ignored by both the calculation and the numeric coercion, and raises a
+warning on the List of Analysis tab — it almost always means `analysis_type` was changed
+back after a row was duplicated. The reverse is warned about too: `analysis_var` filled on
+a ratio row is not merely redundant, because `ck_stack_loa()` drops any row whose
+`analysis_var` is the grouping variable, which would make the ratio vanish from exactly
+one column block.
+
+**In the output** a ratio's `analysis_var` is the composite key
+`"numerator %/% denominator"` — the name `analysistools::create_analysis()` gives it, and
+the key the `extra_columns` metadata join uses. `label_analysis_var` is composed from the
+two halves as `"<numerator label> per <denominator label>"` when both are in the label
+row, and falls back to the raw key when either is not. Ratio rows are written with the
+plain number format, not the percentage format.
 
 **`count_select_multiple` and `combination_select_multiple` are not valid `analysis_type`
 values here.** They are produced by the pipeline from the `count_selections` and

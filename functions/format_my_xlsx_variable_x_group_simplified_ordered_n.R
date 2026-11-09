@@ -456,6 +456,26 @@ ck_percent_format <- function(digits = 0) {
 }
 
 
+#' Which Rows Hold a Decimal Rather Than a Percentage
+#'
+#' `stat` is a proportion for the proportion and combination analyses, so those
+#' rows take the percentage format. `mean`, `median` and `ratio` are numbers in
+#' the question's own units and take the plain number format - a ratio of 2.4
+#' children per household displayed as a percentage reads as 240%.
+#'
+#' The rule lives here because it is applied in two places, the matrix layout
+#' and the blocks layout, and an analysis type added to one and not the other
+#' is formatted inconsistently depending on which layout was asked for.
+#'
+#' @param analysis_type The `analysis_type` column, any case.
+#' @return A logical vector, `TRUE` where the row is a plain number.
+#' @keywords internal
+ck_is_decimal_type <- function(analysis_type) {
+  at <- tolower(as.character(analysis_type))
+  !is.na(at) & grepl("mean|median|ratio", at)
+}
+
+
 #' Register a Header Band Style
 #'
 #' The three coloured header bands share everything except size, fill and
@@ -1933,7 +1953,7 @@ ck_write_group_sheet <- function(
   # --- Row classes ------------------------------------------------------------
   if ("analysis_type" %in% names(sheet_dat)) {
     at <- tolower(as.character(sheet_dat[["analysis_type"]]))
-    is_dec <- !is.na(at) & grepl("mean|median", at)
+    is_dec <- ck_is_decimal_type(at)
     is_pct <- !is.na(at) & !is_dec
   } else {
     is_dec <- rep(TRUE, n_row)
@@ -2593,8 +2613,7 @@ ck_write_block_sheet <- function(
 
     # Percentages or decimals depending on the analysis type of each row
     if ("analysis_type" %in% names(dat)) {
-      at <- tolower(as.character(dat[["analysis_type"]][rows_q]))
-      is_dec <- !is.na(at) & grepl("mean|median", at)
+      is_dec <- ck_is_decimal_type(dat[["analysis_type"]][rows_q])
     } else {
       is_dec <- rep(FALSE, n_r)
     }

@@ -337,6 +337,95 @@ ck_parent_label_from_children <- function(parent, label_lookup, sm_separator = "
 }
 
 
+#' The analysis_var Separator Used for a Ratio
+#'
+#' \code{analysistools::create_analysis()} reports a ratio's
+#' \code{analysis_var} as \code{"numerator \%/\% denominator"}, and
+#' \code{\link{ck_fast_analysis}} reproduces it so the two engines agree. The
+#' string lives here rather than at each use site so that verifying it against a
+#' new analysistools version is a one-line job.
+#'
+#' @return A single string.
+#' @keywords internal
+ck_ratio_key_separator <- function() " %/% "
+
+
+#' Compose the Question Label for a Ratio
+#'
+#' A ratio's \code{analysis_var} is the composite key built by
+#' \code{\link{ck_loa_var_key}}, which is never a column of the export, so the
+#' ordinary label lookup misses it and the output would show raw question codes
+#' where every other row shows label text.
+#'
+#' Both halves must resolve, or the raw key is kept: "How many children are
+#' travelling with you? per Q11" reads worse than "Q12 \%/\% Q11", which at
+#' least says plainly that nothing was labelled.
+#'
+#' @param analysis_var One \code{analysis_var} value.
+#' @param label_lookup A named vector from \code{\link{ck_build_label_lookup}}.
+#' @param sm_separator Separator between parent and choice. Default \code{"/"}.
+#' @param joiner Text placed between the two labels. Default \code{" per "}.
+#' @return A single label, or \code{NA_character_} when either half is
+#'   unlabelled or the value is not a ratio key.
+#' @keywords internal
+ck_ratio_label <- function(analysis_var,
+                           label_lookup,
+                           sm_separator = "/",
+                           joiner = " per ") {
+  if (length(label_lookup) == 0 || is.na(analysis_var)) {
+    return(NA_character_)
+  }
+
+  parts <- strsplit(analysis_var, ck_ratio_key_separator(), fixed = TRUE)[[1]]
+  if (length(parts) != 2L) {
+    return(NA_character_)
+  }
+
+  labs <- vapply(
+    parts,
+    function(p) {
+      lab <- unname(label_lookup[p])
+      if (is.na(lab)) lab <- ck_parent_label_from_children(p, label_lookup, sm_separator)
+      lab
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  if (anyNA(labs)) {
+    return(NA_character_)
+  }
+
+  paste0(labs[1], joiner, labs[2])
+}
+
+
+#' Read a Logical Flag Column from an LOA
+#'
+#' A spreadsheet delivers TRUE/FALSE as a logical, as text, or as 1/0 depending
+#' on how the cell was typed. Anything not recognisably true reads as
+#' \code{FALSE}, which is the documented meaning of a blank cell: no silent
+#' imputation, and the same answer in both engines.
+#'
+#' @param x One LOA column.
+#' @return A logical vector with no \code{NA}.
+#' @keywords internal
+ck_loa_flag <- function(x) {
+  if (is.null(x)) return(logical(0))
+
+  if (is.logical(x)) {
+    x[is.na(x)] <- FALSE
+    return(x)
+  }
+
+  if (is.numeric(x)) {
+    return(!is.na(x) & x != 0)
+  }
+
+  tolower(trimws(as.character(x))) %in% c("true", "t", "yes", "y", "1")
+}
+
+
 #' Relabel Question Names in an Analysis Table
 #'
 #' Adds \code{label_analysis_var} from the ONA label row. Only the *questions*
@@ -372,6 +461,15 @@ ck_relabel_questions <- function(results_table,
   # child columns are exported), so recover the parent label from the children.
   for (v in unique(analysis_var[is.na(question_label)])) {
     derived <- ck_parent_label_from_children(v, label_lookup, sm_separator)
+    if (!is.na(derived)) {
+      question_label[analysis_var == v] <- derived
+    }
+  }
+
+  # A ratio's analysis_var is a composite key, so neither lookup above can hit
+  # it. Label the two halves separately and join them.
+  for (v in unique(analysis_var[is.na(question_label)])) {
+    derived <- ck_ratio_label(v, label_lookup, sm_separator)
     if (!is.na(derived)) {
       question_label[analysis_var == v] <- derived
     }
@@ -2144,8 +2242,9 @@ ck_loa_is_available <- function(loa, dataset, sm_separator = "/") {
 #'
 #' For ratios, \code{create_analysis()} reports \code{analysis_var} as
 #' \code{"numerator \%/\% denominator"}. This reproduces that so LOA metadata
-#' can be joined back onto ratio rows too. Verify the separator against your
-#' installed analysistools version.
+#' can be joined back onto ratio rows too. The separator itself is
+#' \code{\link{ck_ratio_key_separator}}; verify it against your installed
+#' analysistools version.
 #'
 #' @param loa The list of analyses.
 #' @return A character vector, one element per LOA row.
@@ -2158,7 +2257,7 @@ ck_loa_var_key <- function(loa) {
   if (any(is_ratio) &&
       all(c("analysis_var_numerator", "analysis_var_denominator") %in% names(loa))) {
     key[is_ratio] <- paste0(
-      loa$analysis_var_numerator[is_ratio], " %/% ",
+      loa$analysis_var_numerator[is_ratio], ck_ratio_key_separator(),
       loa$analysis_var_denominator[is_ratio]
     )
   }
@@ -2199,6 +2298,27 @@ ck_stack_loa <- function(loa,
   lv <- ck_level_info(loa, fallback_level = fallback_level)
   loa$level <- lv$level
   loa$.ck_level_supplied <- lv$supplied
+
+  # The two ratio flags are resolved here for the same reason: both engines must
+  # read a blank cell the same way. ck_fast_analysis() already treats NA as
+  # FALSE, while create_analysis() defaults them to TRUE, so left alone the same
+  # ratio could change value purely because `level` routed the row to the survey
+  # engine. FALSE is the documented meaning of a blank cell - no silent
+  # imputation of a missing numerator, no silent dropping of a zero denominator.
+  if (nrow(loa) > 0) {
+    is_ratio_row <- !is.na(loa$analysis_type) & tolower(loa$analysis_type) == "ratio"
+
+    for (cc in c("numerator_NA_to_0", "filter_denominator_0")) {
+      # A workbook with no ratio rows gains nothing from the column, so it is
+      # added only where it is read.
+      if (!cc %in% names(loa) && !any(is_ratio_row)) next
+      loa[[cc]] <- if (cc %in% names(loa)) {
+        ck_loa_flag(loa[[cc]])
+      } else {
+        rep(FALSE, nrow(loa))
+      }
+    }
+  }
 
   blocks <- list()
 
@@ -2689,7 +2809,8 @@ ck_fast_analysis <- function(dataset,
         )
 
         res <- ck_res_df(
-          type, paste0(num_var, " %/% ", den_var), NA_character_, gvar, g_lv,
+          type, paste0(num_var, ck_ratio_key_separator(), den_var),
+          NA_character_, gvar, g_lv,
           stat = s[, "wn"] / s[, "wd"],
           n = s[, "n"],
           n_total = s[, "n"],
@@ -3560,12 +3681,21 @@ run_group_analysis_pipeline <- function(dataset,
     )[["data_with_fix_concat"]]
   }
 
-  numeric_vars <- loa$analysis_var[
-    !is.na(loa$analysis_type) & tolower(loa$analysis_type) %in% c("mean", "median")
-  ]
+  # Only the variables an analysis will actually read as a number are coerced,
+  # and the ratio columns are filtered by analysis_type for exactly the reason
+  # mean/median are: coercion rewrites the dataset column for the whole run, so
+  # a leftover code in analysis_var_numerator on a prop_select_one row would
+  # otherwise turn every category label in that column into NA - and the row it
+  # sits on would still be analysed as a proportion, leaving no sign of why the
+  # question came back empty.
+  a_type <- tolower(as.character(loa$analysis_type))
+  numeric_vars <- loa$analysis_var[!is.na(a_type) & a_type %in% c("mean", "median")]
+
+  is_ratio_row <- !is.na(a_type) & a_type == "ratio"
   for (cc in intersect(c("analysis_var_numerator", "analysis_var_denominator"), names(loa))) {
-    numeric_vars <- c(numeric_vars, loa[[cc]])
+    numeric_vars <- c(numeric_vars, loa[[cc]][is_ratio_row])
   }
+
   dataset <- ck_coerce_numeric(dataset, numeric_vars, verbose = verbose)
 
   # Four features read the same select_multiple child columns: the selection
