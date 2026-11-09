@@ -11,42 +11,33 @@ app.R                     UI assembly and reactive wiring, nothing else
 R/
   setup_packages.R        what the app needs, and the startup check
   deployment.R            local or served, and what that changes
-  read_dataset.R          dataset ingestion and profiling
-  read_loa.R              the List of Analysis reader, validator and spec
-  ui_components.R         the rules behind the interface, as pure functions
-  export_results.R        filenames, export settings, writing the workbook
+  ui_components.R         the Shiny tags: tracker, badges, status notes
+  manifest.R              deployment tooling (not bundled with the app)
   compare_workbooks.R     cell-by-cell workbook comparison (not bundled)
-  generate_manifest.R     deployment tooling (not bundled with the app)
-functions/
-  ck_analysis_ona_*.R     the analysis pipeline
-  format_my_xlsx_*_ordered_n.R   the MMC export formatter
+generate_manifest.R       writes manifest.json
 www/                      stylesheet and logo
 docs/
-  loa-schema.md           the full workbook specification
-  loa_template.xlsx       a filled-in template to start from
-  deployment.md           deploying to Posit Cloud
+  deployment.md           deploying to Posit Connect Cloud
   development.md          this file
 tests/testthat/           the test suite
 ```
 
-Everything in `R/` is pure and Shiny-free, which is what makes it testable
-without starting a session. `app.R` assembles the interface and connects
-reactives; it holds no analysis and no validation.
+Everything else - reading the dataset and the List of Analysis, the checks, the
+analysis pipeline, the export, the template and its schema - is the
+[analysiskit](https://github.com/mixedmigrationcentre/analysiskit) package,
+attached at startup. `app.R` assembles the interface and connects reactives; it
+holds no analysis and no validation.
 
-The analysis and export functions are sourced from `functions/` at startup, so
-they can be replaced without touching the app.
+**To change the analysis**, edit the package, run its tests, push it, and
+reinstall it here:
 
-**One caution about replacing the formatter.** Every `.R` file in `functions/`
-is sourced, so two files defining `format_my_xlsx_variable_x_group()` do not
-error — `source()` order silently decides which one survives, and the older
-definition can win. The workbook still builds, just without the newer arguments.
-When you drop in a new build, retire the old file rather than leaving it beside
-the new one. A test enforces this, and every run prints the build that is
-actually loaded as the first line of the formatter's log:
-
+```r
+pak::pkg_install("mixedmigrationcentre/analysiskit")
 ```
-format_my_xlsx_variable_x_group [simplified build: n-ordering, empty-group drop, NaN blanking, percent_digits]
-```
+
+While working on both at once, `pak::local_install("<path to analysiskit>")`
+picks up unpushed changes - but reinstall from GitHub before generating the
+manifest, or the deployment cannot rebuild the package.
 
 ---
 
@@ -59,9 +50,10 @@ source("tests/testthat.R")
 ```
 
 Needs `testthat`, `writexl`, `withr` in addition to the app's own packages. The
-suite sources everything in `R/` and `functions/`, and covers the workbook
-reader and validator, the variable checks, the interface rules, the export, the
-deployment behaviour and the app wiring itself through `shiny::testServer()`.
+suite attaches analysiskit, sources everything in `R/`, and covers the Shiny
+helpers, the package and manifest checks, the deployment behaviour and the app
+wiring itself through `shiny::testServer()`. The analysis itself is tested in
+the analysiskit package.
 
 A few tests skip unless the survey packages are installed. None of them write
 anything outside a temporary folder, and none install packages.
@@ -155,7 +147,7 @@ formatter. Styling is not compared.
 - The Results tab previews the first 12 columns of the wide table only.
 - Export settings — the blocks layout, one sheet per `sector` — are fixed house
   style. If they need to vary per workbook, an `export` sheet is the natural
-  place; see the open questions in [loa-schema.md](loa-schema.md).
+  place; see the open questions in [loa-schema.md](https://github.com/mixedmigrationcentre/analysiskit/blob/main/inst/extdata/loa-schema.md) in the analysiskit package.
 - No `renv` lockfile for local development. `manifest.json` covers deployment.
 - The export writes a sheet's data area in one pass, which leaves an empty cell
   where the per-question header and spacer rows fall. The workbook is identical

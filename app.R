@@ -1,13 +1,15 @@
 # Analysis Kit - Mixed Migration Centre
 #
 # app.R assembles the interface and connects reactive behaviour. Reading,
-# validating, analysing and exporting all live in R/ and functions/, so nothing
-# in this file needs a running Shiny session to be understood or tested.
+# validating, analysing and exporting all come from the analysiskit package
+# (github.com/mixedmigrationcentre/analysiskit); this repository holds only the
+# Shiny interface and the deployment tooling. A change to the analysis is made
+# in the package, and reaches the app when the package is reinstalled.
 
 # Packages first: a missing one should be a clear message on launch, not an
 # error halfway through a run. ak_ensure_packages() installs what is missing
 # from CRAN and stops with the exact command for anything it will not install
-# on your behalf. See R/setup_packages.R for what is needed and why.
+# on your behalf - analysiskit included. See R/setup_packages.R.
 source("R/setup_packages.R")
 source("R/deployment.R")
 
@@ -19,21 +21,7 @@ ak_attach_packages()
 
 options(shiny.maxRequestSize = 100 * 1024^2)
 
-source("R/read_dataset.R")
-source("R/read_loa.R")
 source("R/ui_components.R")
-source("R/export_results.R")
-
-# The analysis and export functions are sourced from functions/, so they can be
-# replaced without touching the app. If they are absent the interface says so
-# rather than pretending it can run.
-for (file in list.files("functions", pattern = "[.][Rr]$", full.names = TRUE)) {
-  source(file)
-}
-
-pipeline_available <- function() {
-  exists("run_group_analysis_pipeline", mode = "function")
-}
 
 
 ui <- fluidPage(
@@ -253,7 +241,7 @@ server <- function(input, output, session) {
   #
   # shinyFiles browses the filesystem the app is running on. Analysis Kit is
   # launched on the analyst's own machine, so that is their filesystem - see
-  # docs/loa-schema.md. Served from a remote host it would browse the server,
+  # docs/deployment.md. Served from a remote host it would browse the server,
   # and a download handler would be the right answer instead.
   # ---------------------------------------------------------------------------
 
@@ -355,10 +343,12 @@ server <- function(input, output, session) {
   output$template <- downloadHandler(
     filename = "analysiskit_loa_template.xlsx",
     content = function(file) {
-      template <- "docs/loa_template.xlsx"
+      # The template ships with the analysiskit package, so the app always
+      # offers the one that matches the analysis code it is running.
+      template <- system.file("extdata", "loa_template.xlsx", package = "analysiskit")
       validate(need(
-        file.exists(template),
-        "The template is missing from docs/."
+        nzchar(template) && file.exists(template),
+        "The template is missing from the analysiskit installation."
       ))
       file.copy(template, file, overwrite = TRUE)
     }
@@ -629,10 +619,7 @@ server <- function(input, output, session) {
 
   output$run_control <- renderUI({
     states <- step_states()
-    # pipeline_available() as well as ak_can_run(): offering a button that
-    # cannot succeed is worse than explaining why it is not offered. The
-    # observer still guards the call, in case the button is reached anyway.
-    ready <- ak_can_run(states) && !running() && pipeline_available()
+    ready <- ak_can_run(states) && !running()
 
     button <- actionButton(
       "run",
@@ -644,12 +631,6 @@ server <- function(input, output, session) {
   })
 
   output$run_hint <- renderUI({
-    if (!pipeline_available()) {
-      return(ak_status(
-        "The analysis functions are not installed in this copy of Analysis Kit, so the run will stop before doing any work. Add them to the functions/ folder.",
-        "warning"
-      ))
-    }
     states <- step_states()
     if (identical(unname(states[["destination"]]), "active")) {
       return(ak_status("Choose an output folder to enable the run."))
@@ -685,14 +666,6 @@ server <- function(input, output, session) {
     run_log(character(0))
     running(TRUE)
     on.exit(running(FALSE), add = TRUE)
-
-    if (!pipeline_available()) {
-      run_error(paste0(
-        "run_group_analysis_pipeline() is not available. Add the analysis ",
-        "functions to the functions/ folder and restart the application."
-      ))
-      return(invisible(NULL))
-    }
 
     folder_issue <- ak_check_folder(folder)
     if (!is.null(folder_issue)) {

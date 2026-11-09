@@ -323,6 +323,43 @@
         "Built": "R 4.6.1; ; 2026-07-03 11:42:28 UTC; windows"
       }
     },
+    "analysiskit": {
+      "Source": "github",
+      "Repository": null,
+      "description": {
+        "Package": "analysiskit",
+        "Title": "Run MMC 4Mi Analyses Locally from a Dataset and a List of\nAnalysis",
+        "Version": "2026.09.1",
+        "Authors@R": "c(\n    person(\"Abubakar\", \"Athman\", , \"abubakar.athman@mixedmigration.org\", role = c(\"aut\", \"cre\")),\n    person(\"Mixed Migration Centre\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "The Analysis Kit workflow as a package. Reads a research\n    dataset and a List of Analysis (LoA) workbook, validates the two\n    against each other, runs the requested proportions, means, medians,\n    ratios, selection counts and choice combinations across every\n    disaggregation, and writes the results to an MMC-branded Excel\n    workbook. The analysis engine, the LoA reader and the exporter are the\n    same code the Analysis Kit Shiny application uses, exposed as ordinary\n    functions so a run can be scripted, scheduled or repeated without an\n    interface.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/mixedmigrationcentre/analysiskit,\nhttps://mixedmigrationcentre.github.io/analysiskit/",
+        "BugReports": "https://github.com/mixedmigrationcentre/analysiskit/issues",
+        "Depends": "R (>= 4.1)",
+        "Imports": "dplyr, openxlsx, readxl, stats, stringr, tidyr, tools, utils",
+        "Suggests": "analysistools, cleaningtools, pak, srvyr, survey, testthat\n(>= 3.0.0), withr, writexl",
+        "Config/roxygen2/version": "8.1.0",
+        "Config/testthat/edition": "3",
+        "Encoding": "UTF-8",
+        "Roxygen": "list(markdown = TRUE)",
+        "RemoteType": "github",
+        "RemoteHost": "api.github.com",
+        "RemoteRepo": "analysiskit",
+        "RemoteUsername": "mixedmigrationcentre",
+        "RemotePkgRef": "mixedmigrationcentre/analysiskit",
+        "RemoteRef": "HEAD",
+        "RemoteSha": "1ffa2f7b17a309669ac63881f09fa61ecfd06b18",
+        "GithubRepo": "analysiskit",
+        "GithubUsername": "mixedmigrationcentre",
+        "GithubRef": "HEAD",
+        "GithubSHA1": "1ffa2f7b17a309669ac63881f09fa61ecfd06b18",
+        "NeedsCompilation": "no",
+        "Packaged": "2026-11-09 11:23:06 UTC; CD538",
+        "Author": "Abubakar Athman [aut, cre],\n  Mixed Migration Centre [cph, fnd]",
+        "Maintainer": "Abubakar Athman <abubakar.athman@mixedmigration.org>",
+        "Built": "R 4.6.1; ; 2026-11-09 11:23:08 UTC; windows"
+      }
+    },
     "analysistools": {
       "Source": "github",
       "Repository": null,
@@ -1958,37 +1995,37 @@
       "description": {
         "Package": "readxl",
         "Title": "Read Excel Files",
-        "Version": "1.5.0.1",
-        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = \"aut\",\n           comment = c(ORCID = \"0000-0003-4757-117X\")),\n    person(\"Jennifer\", \"Bryan\", , \"jenny@posit.co\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0002-6983-2759\")),\n    person(\"Posit, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = \"Copyright holder of all R code and all C/C++ code without explicit copyright attribution\"),\n    person(\"Marcin\", \"Kalicinski\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included RapidXML code\"),\n    person(\"Komarov Valery\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Christophe Leitienne\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Bob Colbert\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"David Hoerl\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Evan Miller\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\")\n  )",
-        "Description": "Import excel files into R. Supports '.xls' via the embedded\n    'libxls' C library <https://github.com/libxls/libxls> and '.xlsx' via\n    the embedded 'RapidXML' C++ library\n    <https://rapidxml.sourceforge.net/>.  Works on Windows, Mac and Linux\n    without external dependencies.",
+        "Version": "1.6.0",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = \"aut\",\n           comment = c(ORCID = \"0000-0003-4757-117X\")),\n    person(\"Jennifer\", \"Bryan\", , \"jenny@posit.co\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0002-6983-2759\")),\n    person(\"Posit, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = \"Copyright holder of all R code and all C/C++ code without explicit copyright attribution\"),\n    person(\"Marcin\", \"Kalicinski\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included RapidXML code\"),\n    person(\"Komarov Valery\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Christophe Leitienne\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Bob Colbert\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"David Hoerl\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"Evan Miller\", role = c(\"ctb\", \"cph\"),\n           comment = \"Author of included libxls code\"),\n    person(\"kokke\", role = \"ctb\",\n           comment = \"Author of included tiny-AES-c code\")\n  )",
+        "Description": "Import excel files into R. Supports '.xls' via the embedded\n    'libxls' C library <https://github.com/libxls/libxls> and '.xlsx' via\n    the embedded 'RapidXML' C++ library\n    <https://rapidxml.sourceforge.net/>.  Works on Windows, Mac and Linux\n    without external dependencies. Reading of password-encrypted '.xlsx'\n    files is supported via the embedded 'tiny-AES-c' C library\n    <https://github.com/kokke/tiny-AES-c>.",
         "License": "MIT + file LICENSE",
         "URL": "https://readxl.tidyverse.org, https://github.com/tidyverse/readxl",
         "BugReports": "https://github.com/tidyverse/readxl/issues",
-        "Depends": "R (>= 4.1)",
-        "Imports": "cellranger, tibble (>= 2.0.1), utils",
-        "Suggests": "covr, knitr, rmarkdown, testthat (>= 3.1.6), withr",
+        "Depends": "R (>= 4.2)",
+        "Imports": "cellranger, cli, rlang, tibble (>= 2.0.1), utils",
+        "Suggests": "askpass, covr, knitr, rmarkdown, testthat (>= 3.1.6), withr",
         "LinkingTo": "cpp11 (>= 0.5.5), progress",
         "VignetteBuilder": "knitr",
         "Config/build/compilation-database": "true",
         "Config/Needs/website": "tidyverse/tidytemplate, tidyverse",
-        "Config/roxygen2/version": "8.0.0",
+        "Config/roxygen2/version": "8.1.0",
         "Config/testthat/edition": "3",
         "Encoding": "UTF-8",
-        "Note": "libxls v1.6.3 c199d13",
+        "Note": "libxls v1.6.4 34c7cc6; tiny-AES-c 2385675",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-09-16 07:49:42 UTC; ripley",
-        "Author": "Hadley Wickham [aut] (ORCID: <https://orcid.org/0000-0003-4757-117X>),\n  Jennifer Bryan [aut, cre] (ORCID:\n    <https://orcid.org/0000-0002-6983-2759>),\n  Posit, PBC [cph, fnd] (Copyright holder of all R code and all C/C++\n    code without explicit copyright attribution),\n  Marcin Kalicinski [ctb, cph] (Author of included RapidXML code),\n  Komarov Valery [ctb, cph] (Author of included libxls code),\n  Christophe Leitienne [ctb, cph] (Author of included libxls code),\n  Bob Colbert [ctb, cph] (Author of included libxls code),\n  David Hoerl [ctb, cph] (Author of included libxls code),\n  Evan Miller [ctb, cph] (Author of included libxls code)",
+        "Packaged": "2026-10-16 22:54:36 UTC; jenny",
+        "Author": "Hadley Wickham [aut] (ORCID: <https://orcid.org/0000-0003-4757-117X>),\n  Jennifer Bryan [aut, cre] (ORCID:\n    <https://orcid.org/0000-0002-6983-2759>),\n  Posit, PBC [cph, fnd] (Copyright holder of all R code and all C/C++\n    code without explicit copyright attribution),\n  Marcin Kalicinski [ctb, cph] (Author of included RapidXML code),\n  Komarov Valery [ctb, cph] (Author of included libxls code),\n  Christophe Leitienne [ctb, cph] (Author of included libxls code),\n  Bob Colbert [ctb, cph] (Author of included libxls code),\n  David Hoerl [ctb, cph] (Author of included libxls code),\n  Evan Miller [ctb, cph] (Author of included libxls code),\n  kokke [ctb] (Author of included tiny-AES-c code)",
         "Maintainer": "Jennifer Bryan <jenny@posit.co>",
         "Repository": "CRAN",
-        "Date/Publication": "2026-09-16 07:53:07 UTC",
-        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-09-17 07:06:09 UTC; windows",
+        "Date/Publication": "2026-10-17 07:20:02 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-10-28 04:32:51 UTC; windows",
         "Archs": "x64",
         "RemoteType": "standard",
         "RemotePkgRef": "readxl",
         "RemoteRef": "readxl",
         "RemoteRepos": "https://cran.rstudio.com",
-        "RemotePkgPlatform": "source",
-        "RemoteSha": "1.5.0.1"
+        "RemotePkgPlatform": "x86_64-w64-mingw32",
+        "RemoteSha": "1.6.0"
       }
     },
     "rematch": {
@@ -2773,34 +2810,16 @@
   },
   "files": {
     "app.R": {
-      "checksum": "09a18018f60274aa654c5fd49a2610b5"
-    },
-    "docs/loa_template.xlsx": {
-      "checksum": "30b74e7d4505afae0e0bd4962481a731"
-    },
-    "functions/ck_analysis_ona_simplified_count_combinations.R": {
-      "checksum": "c39b05a3fdae3eb480c60851a9e2713f"
-    },
-    "functions/format_my_xlsx_variable_x_group_simplified_ordered_n.R": {
-      "checksum": "86d3643ca99f7f6597b5f56e7fcf97e2"
+      "checksum": "04590e901ada9b034ad1f4de80b366ee"
     },
     "R/deployment.R": {
-      "checksum": "4f57c89aed3df403317afb6e4a590ad5"
-    },
-    "R/export_results.R": {
-      "checksum": "3d3b7bcdaf609f9171c4c57f26a332aa"
-    },
-    "R/read_dataset.R": {
-      "checksum": "d4fe45e975f37bc889c9a7724f12e17c"
-    },
-    "R/read_loa.R": {
-      "checksum": "8fdf8dfe425d2b6cb2c530595d1bd7dd"
+      "checksum": "27e8477909a1dddc70772b945b08e62d"
     },
     "R/setup_packages.R": {
-      "checksum": "d6fd64dbd31ef077100907c49aadce67"
+      "checksum": "3d51c5750612918fe48239126fa38f47"
     },
     "R/ui_components.R": {
-      "checksum": "61a6a9f37de7c15dcd14e2106f0bfc0f"
+      "checksum": "f178392a90588c3fbc47b26bfe51bc0d"
     },
     "www/logo.png": {
       "checksum": "ecfbb0ed4014f6f6f73297931e3e0d82"

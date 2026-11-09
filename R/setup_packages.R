@@ -8,14 +8,14 @@
 #
 # Two deliberate limits on what this does automatically:
 #
-#   * It installs from CRAN only. analysistools and cleaningtools live on
-#     GitHub; pulling those implicitly means compiling a dependency tree the
-#     user never asked for, so they are reported with the exact command
-#     instead.
-#   * It attaches only shiny. Every other call in this project is
-#     namespace-qualified (dplyr::bind_rows, openxlsx::addStyle), so the rest
-#     need to be installed and loadable, not on the search path. Attaching
-#     dplyr would also mask stats::filter and stats::lag for no benefit.
+#   * It installs from CRAN only. analysiskit, analysistools and cleaningtools
+#     live on GitHub, so they are reported with the exact command instead.
+#     analysiskit is required: it is the analysis itself, and the app is only
+#     the interface to it.
+#   * It attaches shiny and analysiskit. Every other call in this project is
+#     namespace-qualified, so the rest need to be installed and loadable, not
+#     on the search path. Attaching dplyr would also mask stats::filter and
+#     stats::lag for no benefit.
 # =============================================================================
 
 
@@ -37,6 +37,11 @@ ak_package_requirements <- function() {
 
   rbind(
     pkg("shiny", "required", "the application itself"),
+    pkg(
+      "analysiskit", "required",
+      "the analysis: reading, checking, running and exporting",
+      source = "GitHub", repo = "mixedmigrationcentre/analysiskit"
+    ),
     pkg("readxl", "required", "reading .xlsx datasets and List of Analysis workbooks"),
     pkg("shinyFiles", "required", "choosing the output folder"),
     pkg("dplyr", "required", "the analysis pipeline"),
@@ -264,14 +269,15 @@ ak_ensure_packages <- function(requirements = ak_package_requirements(),
 
 #' Attach the Packages That Must Be on the Search Path
 #'
-#' Only shiny. Everything else in this project is called namespace-qualified,
-#' so it needs to be installed rather than attached, and attaching more would
-#' mask base functions for no gain.
+#' shiny, and analysiskit, whose functions app.R calls by name. Everything else
+#' in this project is called namespace-qualified, so it needs to be installed
+#' rather than attached, and attaching more would mask base functions for no
+#' gain.
 #'
 #' @return Invisibly, the packages attached.
 #' @export
 ak_attach_packages <- function() {
-  attached <- "shiny"
+  attached <- c("shiny", "analysiskit")
   for (package in attached) {
     library(package, character.only = TRUE)
   }

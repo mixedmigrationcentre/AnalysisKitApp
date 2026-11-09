@@ -23,12 +23,16 @@
 #    what to do, so the checks below report the whole list at once with the
 #    commands that fix it.
 #
-# Why the survey packages are involved at all: the analysis pipeline calls
-# srvyr::, analysistools:: and cleaningtools:: by name. renv reads those calls,
-# so all three have to be installed for the manifest to record them - even
-# though a run only reaches them when a List of Analysis asks for a confidence
-# level, or for recreate_sm_parents. Deploying pulls them in whether or not you
-# use them.
+# The analysis itself is the analysiskit package, recorded in the manifest like
+# any other dependency. Two consequences:
+#
+#   * It must be installed from GitHub, not from a local folder. The server
+#     rebuilds the library from the manifest, and a package recorded as
+#     "installed from C:/Users/..." cannot be rebuilt anywhere else. The
+#     preflight below refuses to write the manifest until that is fixed.
+#   * analysiskit lists srvyr and analysistools under Suggests, which renv does
+#     not follow. ak_survey_engine_packages() in R/deployment.R names them so
+#     the survey engine is available to a deployed app too.
 # =============================================================================
 
 
@@ -58,11 +62,7 @@ ak_manifest_files <- function(app_dir = ".") {
       relative("[.][Rr]$", "R"),
       c("R/manifest.R", "R/generate_manifest.R", "R/compare_workbooks.R")
     ),
-    relative("[.][Rr]$", "functions"),
-    relative("[.](css|png|js|svg|ico)$", "www"),
-    # The template is downloadable from the interface, so it has to travel with
-    # the app - a deployed user has no access to the repository.
-    "docs/loa_template.xlsx"
+    relative("[.](css|png|js|svg|ico)$", "www")
   )
 
   files[file.exists(file.path(app_dir, files))]
@@ -164,6 +164,21 @@ ak_manifest_preflight <- function(app_dir = ".",
     queue <- c(queue, setdiff(ak_hard_dependencies(package), seen))
   }
 
+  # analysiskit is the one package the server has to fetch from GitHub, and it
+  # can only do that if the local copy remembers where it came from.
+  if ("analysiskit" %in% seen && requireNamespace("analysiskit", quietly = TRUE)) {
+    remote <- suppressWarnings(
+      utils::packageDescription("analysiskit", fields = "RemoteType")
+    )
+    if (!identical(remote, "github")) {
+      note(
+        "analysiskit",
+        "installed from a local folder, which the server cannot rebuild",
+        "the app"
+      )
+    }
+  }
+
   # Attribute each missing package to the installed package that needs it.
   for (i in seq_along(problems)) {
     package <- problems[[i]]$package
@@ -200,6 +215,7 @@ ak_manifest_fixes <- function(problems) {
   if (nrow(problems) == 0) return(character(0))
 
   github <- c(
+    analysiskit = "mixedmigrationcentre/analysiskit",
     analysistools = "impact-initiatives/analysistools",
     cleaningtools = "impact-initiatives/cleaningtools"
   )
@@ -254,9 +270,9 @@ ak_write_manifest <- function(app_dir = ".", quiet = FALSE) {
         ),
         "\n\nRun:\n  ",
         paste(ak_manifest_fixes(problems), collapse = "\n  "),
-        "\n\nThe analysis pipeline calls srvyr::, analysistools:: and ",
-        "cleaningtools:: by name, so renv records them even though a run only ",
-        "reaches them when a List of Analysis asks for a confidence level."
+        "\n\nanalysiskit has to come from GitHub so the server can install ",
+        "the same version. srvyr and analysistools are recorded so the ",
+        "survey engine works on the server too."
       ),
       call. = FALSE
     )

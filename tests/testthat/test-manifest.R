@@ -17,11 +17,11 @@ test_that("the bundle carries everything the app needs at run time", {
 
   expect_true("app.R" %in% files)
   expect_true(any(startsWith(files, "R/")))
-  expect_true(any(startsWith(files, "functions/")))
   expect_true("www/styles.css" %in% files)
-  # A deployed user has no access to the repository, so the template has to
-  # travel with the app or the download link points at nothing.
-  expect_true("docs/loa_template.xlsx" %in% files)
+  # The analysis and the template come from the analysiskit package, which the
+  # server installs from the manifest - so neither is bundled as a file.
+  expect_false(any(startsWith(files, "functions/")))
+  expect_false(any(startsWith(files, "docs/")))
 
   expect_true(all(file.exists(file.path(app_root(), files))))
 })
@@ -104,10 +104,13 @@ test_that("the packages to check come from a real scan of the bundled files", {
 
   packages <- ak_manifest_packages(app_root())
 
-  expect_true(all(c("shiny", "shinyFiles", "openxlsx") %in% packages))
-  # The pipeline calls these by name, which is why deploying needs them
-  # installed even though a run may never reach them.
-  expect_true(all(c("srvyr", "analysistools", "cleaningtools") %in% packages))
+  # analysiskit brings its own Imports (openxlsx, dplyr, ...) with it.
+  expect_true(all(c("shiny", "shinyFiles", "analysiskit") %in% packages))
+  # analysiskit only Suggests the survey engine, which renv does not follow;
+  # ak_survey_engine_packages() is what records them.
+  expect_true(all(c("srvyr", "analysistools") %in% packages))
+  # cleaningtools is left out on purpose - see ak_survey_engine_packages().
+  expect_false("cleaningtools" %in% packages)
   # Nothing from the test suite, which is not in the bundle.
   expect_false("testthat" %in% packages)
 })

@@ -146,3 +146,24 @@ ak_destination_mode <- function(server = ak_is_server()) {
     )
   }
 }
+
+
+#' Packages the Survey Engine Needs on a Server
+#'
+#' Never called. analysiskit reaches srvyr and analysistools only when a List of
+#' Analysis row sets a confidence `level`, so it lists them under Suggests - and
+#' renv, which builds manifest.json, does not follow Suggests. Naming them here
+#' is what records them, so a deployed app can run the survey engine too.
+#'
+#' cleaningtools is left out on purpose: it is needed only for
+#' `recreate_sm_parents`, and it drags V8 and Rtsne, both compiled from source,
+#' into every deployment.
+#'
+#' @return Invisibly, whether both packages load.
+#' @keywords internal
+ak_survey_engine_packages <- function() {
+  invisible(
+    requireNamespace("srvyr", quietly = TRUE) &&
+      requireNamespace("analysistools", quietly = TRUE)
+  )
+}

@@ -31,12 +31,13 @@ test_that("the requirements name a package, a need, a source and a reason", {
 test_that("the requirements cover everything the code actually calls", {
   requirements <- ak_package_requirements()
 
-  # These are called by name in R/ and functions/. A package used but not
-  # declared would fail at run time instead of at startup, which is the whole
-  # point of the check.
+  # These are called by name in the app or by analysiskit. A package used but
+  # not declared would fail at run time instead of at startup, which is the
+  # whole point of the check.
   expect_true(
     all(
-      c("shiny", "readxl", "shinyFiles", "dplyr", "tidyr", "stringr", "openxlsx")
+      c("shiny", "analysiskit", "readxl", "shinyFiles", "dplyr", "tidyr",
+        "stringr", "openxlsx")
         %in% requirements$package[requirements$need == "required"]
     )
   )
@@ -162,12 +163,13 @@ test_that("a CRAN mirror is set before any install is attempted", {
   expect_equal(getOption("repos")[["CRAN"]], "https://example.org/cran")
 })
 
-test_that("only shiny is attached", {
+test_that("only shiny and analysiskit are attached", {
   # Every other call in this project is namespace-qualified, so attaching more
   # would mask base functions - stats::filter and stats::lag above all - for no
   # benefit.
-  expect_equal(ak_attach_packages(), "shiny")
+  expect_equal(ak_attach_packages(), c("shiny", "analysiskit"))
   expect_true("package:shiny" %in% search())
+  expect_true("package:analysiskit" %in% search())
   expect_false("package:dplyr" %in% search())
 })
 

@@ -247,29 +247,6 @@ test_that("the sheet summary reflects what the workbook actually supplied", {
   })
 })
 
-test_that("the run button reports honestly when the pipeline is absent", {
-  skip_without_app()
-  skip_if(
-    exists("run_group_analysis_pipeline", mode = "function"),
-    "the analysis functions are installed, so there is nothing to report"
-  )
-
-  shiny::testServer(app_dir, {
-    session$setInputs(dataset = upload(dataset_file()))
-    session$setInputs(loa = upload(loa_file()))
-    expect_match(ui_text(output$run_hint), "functions/ folder")
-    # The button is not offered when it cannot succeed.
-    expect_match(ui_text(output$run_control), "disabled")
-
-    session$setInputs(run = 1)
-
-    # It must not claim to have run, and it must not crash the session.
-    expect_null(analysis_results())
-    expect_match(run_error(), "not available")
-    expect_match(ui_text(output$results_status), "not available")
-  })
-})
-
 test_that("a blocked workbook never reaches the pipeline at all", {
   skip_without_app()
 
@@ -658,8 +635,9 @@ test_that("the List of Analysis template is downloadable from the app", {
   skip_without_app()
 
   # The link is the only route to the template for anyone using a deployed
-  # copy, who has no access to the repository.
-  expect_true(file.exists(file.path(app_dir, "docs", "loa_template.xlsx")))
+  # copy, who has no access to the repository. It ships with analysiskit, so
+  # the template always matches the analysis code the app is running.
+  expect_true(nzchar(system.file("extdata", "loa_template.xlsx", package = "analysiskit")))
 
   shiny::testServer(app_dir, {
     # testServer runs the handler and hands back the path it wrote to.
