@@ -16,10 +16,18 @@ Moved out of `README.md`, which is the short guide to using the app.
 ## Generate the manifest
 
 Connect Cloud and Posit Connect need a `manifest.json` describing the app's
-files and package versions. From the project root:
+files and package versions. First make sure analysiskit is installed **from
+GitHub** - the server rebuilds it from there, so a copy installed from a local
+folder cannot be deployed, and the pre-flight below refuses it:
 
 ```r
-source("R/generate_manifest.R")
+pak::pkg_install("mixedmigrationcentre/analysiskit")
+```
+
+Then, from the project root:
+
+```r
+source("generate_manifest.R")
 ```
 
 This must be run **on the machine that has your real library** — the manifest
@@ -36,19 +44,15 @@ a library whose packages have missing dependencies**. Its own message names one
 package at a time; `generate_manifest.R` runs a pre-flight first and reports the
 whole list with the commands that fix it.
 
-The usual cause is the survey chain. The analysis pipeline calls `srvyr::` and
-`analysistools::` **by name**, so renv records both — and their dependencies —
-even though a run only reaches them when a workbook asks for a confidence level.
-Deploying pulls them in whether or not you use them.
+The usual cause is the survey chain. analysiskit only *suggests* `srvyr` and
+`analysistools` - a run reaches them only when a workbook asks for a confidence
+level - and renv does not follow Suggests. `ak_survey_engine_packages()` in
+`R/deployment.R` names them so the manifest records them, which means they, and
+their dependencies, must be installed before the manifest can be written.
 
-`cleaningtools` is the exception. It is needed by exactly one call, behind
-`recreate_sm_parents = TRUE`, and recording it dragged in eight further
-packages — `V8` and `Rtsne` among them, both of which compile from source. It is
-reached through `getFromNamespace()` instead, so renv no longer records it and
-the deployment no longer builds it. Nothing changes for a run that does set
-`recreate_sm_parents`: the startup check still names the package and the install
-command if it is missing. **Regenerate `manifest.json` to pick this up** — it
-still records the old, larger dependency set until you do.
+`cleaningtools` is left out on purpose. It is needed only for
+`recreate_sm_parents = TRUE`, and recording it drags in eight further packages -
+`V8` and `Rtsne` among them, both of which compile from source.
 
 If you hit `RcppArmadillo [required by survey]`:
 
@@ -56,7 +60,7 @@ If you hit `RcppArmadillo [required by survey]`:
 install.packages(c("RcppArmadillo", "srvyr"))
 ```
 
-then run `source("R/generate_manifest.R")` again.
+then run `source("generate_manifest.R")` again.
 
 ---
 
