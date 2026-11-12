@@ -552,15 +552,19 @@ server <- function(input, output, session) {
     display
   })
 
-  # Shown before the run, not discovered during it: a workbook that fills in
-  # `level` everywhere routes every analysis through the survey package, whose
-  # cost grows with the number of levels of each grouping variable.
+  # Shown before the run, not discovered during it: a workbook that asks for
+  # confidence intervals routes those analyses through the survey package,
+  # whose cost grows with the number of levels of each grouping variable.
+  #
+  # A `level` alone no longer does that. analysiskit sends a row to the survey
+  # engine only when value_columns reports stat_low / stat_upp, or the row is
+  # a median or a ratio - so the wording is about the interval, not the cell.
   output$engine_note <- renderUI({
     req(dataset_ok(), loa_ok())
     split <- loa_engine_split(analysis_spec())
     if (split$survey == 0) {
       return(ak_status(
-        "No analysis asks for a confidence level, so the whole run uses the fast tabulation engine.",
+        "No analysis needs a confidence interval calculated, so the whole run uses the fast tabulation engine.",
         "success"
       ))
     }
