@@ -61,8 +61,14 @@ test_that("status tones map to the stylesheet's classes", {
 
 # --- the engine note --------------------------------------------------------
 
-spec_with <- function(level, engine = NULL, groups = c("Overall", "G1", "G2")) {
-  settings <- list()
+# value_columns reports the interval by default here, because analysiskit only
+# sends a row with a level to the survey engine when the interval it asks for
+# will actually be shown.
+spec_with <- function(level,
+                      engine = NULL,
+                      groups = c("Overall", "G1", "G2"),
+                      value_columns = c("stat", "stat_low", "stat_upp", "n", "n_total")) {
+  settings <- list(value_columns = value_columns)
   if (!is.null(engine)) settings$engine <- engine
 
   structure(
@@ -119,4 +125,13 @@ test_that("the caveat panel renders only when there is something to say", {
     data.frame(analysis_var = "Q78", n_in_base = 800, n_no_selection = 200)
   ))
   expect_equal(lengths(regmatches(both, gregexpr("<li>", both))), 1L)
+})
+
+
+test_that("the note is silent when a level is set but no interval is reported", {
+  # The default value_columns shows no interval, so analysiskit tabulates the
+  # row and there is no survey cost to warn about.
+  split <- loa_engine_split(spec_with(c(0.95, 0.95), value_columns = c("stat", "n", "n_total")))
+  expect_equal(split$survey, 0L)
+  expect_length(ak_engine_note(split), 0L)
 })
