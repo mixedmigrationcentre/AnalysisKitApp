@@ -55,7 +55,7 @@ ui <- fluidPage(
         class = "ak-destination",
         # The heading is rendered rather than fixed: served, there is no folder
         # to pick and "Output folder" over an empty space reads as a broken
-        # control. See ak_destination_mode().
+        # control. See the ak_destination_mode().
         uiOutput("folder_label"),
         uiOutput("folder_control"),
         uiOutput("folder_status")
@@ -345,7 +345,11 @@ server <- function(input, output, session) {
     content = function(file) {
       # The template ships with the analysiskit package, so the app always
       # offers the one that matches the analysis code it is running.
-      template <- system.file("extdata", "loa_template.xlsx", package = "analysiskit")
+      template <- system.file(
+        "extdata",
+        "loa_template.xlsx",
+        package = "analysiskit"
+      )
       validate(need(
         nzchar(template) && file.exists(template),
         "The template is missing from the analysiskit installation."
