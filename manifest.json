@@ -348,16 +348,16 @@
         "RemoteUsername": "mixedmigrationcentre",
         "RemotePkgRef": "mixedmigrationcentre/analysiskit",
         "RemoteRef": "HEAD",
-        "RemoteSha": "dde3f17985cca40ffd5ba7cd53019c89482c6666",
+        "RemoteSha": "ffc860f1dd6e9d3e276a354b9250676438ce98de",
         "GithubRepo": "analysiskit",
         "GithubUsername": "mixedmigrationcentre",
         "GithubRef": "HEAD",
-        "GithubSHA1": "dde3f17985cca40ffd5ba7cd53019c89482c6666",
+        "GithubSHA1": "ffc860f1dd6e9d3e276a354b9250676438ce98de",
         "NeedsCompilation": "no",
-        "Packaged": "2026-11-13 09:39:50 UTC; CD538",
+        "Packaged": "2026-11-16 07:44:08 UTC; CD538",
         "Author": "Abubakar Athman [aut, cre],\n  Mixed Migration Centre [cph, fnd]",
         "Maintainer": "Abubakar Athman <abubakar.athman@mixedmigration.org>",
-        "Built": "R 4.6.1; ; 2026-11-13 09:39:51 UTC; windows"
+        "Built": "R 4.6.1; ; 2026-11-16 07:44:11 UTC; windows"
       }
     },
     "analysistools": {
@@ -2810,7 +2810,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "489c2a0c11bd3d5ac713d1c6d4986cc0"
+      "checksum": "dfbaa0920b900e204b7a7dbf8e9f3f6f"
     },
     "R/deployment.R": {
       "checksum": "27e8477909a1dddc70772b945b08e62d"

@@ -773,6 +773,14 @@ server <- function(input, output, session) {
       # Only now, with a completed run in hand, is anything written to disk.
       setProgress(0.78, detail = "building the results workbook")
 
+      # The List of Analysis decides whether the dataset goes into the
+      # workbook (settings/include_dataset, FALSE by default). The upload is
+      # passed either way; ak_export_results() only writes it when asked to.
+      if (isTRUE(spec$settings$include_dataset)) {
+        note("The dataset will be added to the workbook as a 'dataset' sheet")
+        flush_log()
+      }
+
       written <- withCallingHandlers(
         tryCatch(
           ak_export_results(
@@ -780,6 +788,7 @@ server <- function(input, output, session) {
             spec = spec,
             folder = folder,
             dataset_name = dataset_name,
+            dataset = dataset,
             verbose = TRUE
           ),
           error = function(error) {
