@@ -42,7 +42,7 @@ fixture_sheets <- function(...) {
       analysis_type = c("prop_select_one", "prop_select_multiple", "mean"),
       analysis_var = c("Q27", "Q78", "Q29"),
       level = c(NA_real_, NA_real_, NA_real_),
-      sector = c("Demographics", "Drivers", "Demographics"),
+      section = c("Demographics", "Drivers", "Demographics"),
       stringsAsFactors = FALSE
     ),
     group_analysis = data.frame(
@@ -73,7 +73,7 @@ fixture_sheets <- function(...) {
     ),
     settings = data.frame(
       setting = c("sm_separator", "value_columns", "extra_columns"),
-      value = c("/", "stat,n,n_total", "sector"),
+      value = c("/", "stat,n,n_total", "section"),
       stringsAsFactors = FALSE
     )
   )

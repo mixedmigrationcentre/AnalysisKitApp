@@ -92,7 +92,7 @@ the rows that publish a confidence interval and leave it empty elsewhere. The
 ### The width of the output
 
 The export costs roughly a fixed 2.4 s per run plus 0.083 s per group column on
-a sheet, and every sector sheet repeats every disaggregation twice — once as
+a sheet, and every section sheet repeats every disaggregation twice — once as
 percentages and once as counts. Two settings move along that line without
 touching a calculation:
 
@@ -145,7 +145,7 @@ formatter. Styling is not compared.
 - Nothing is written to `outputs/`; the destination is always a folder you pick
   or a download.
 - The Results tab previews the first 12 columns of the wide table only.
-- Export settings — the blocks layout, one sheet per `sector` — are fixed house
+- Export settings — the blocks layout, one sheet per `section` (or `sector`, in an older workbook) — are fixed house
   style. If they need to vary per workbook, an `export` sheet is the natural
   place; see the open questions in [loa-schema.md](https://github.com/mixedmigrationcentre/analysiskit/blob/main/inst/extdata/loa-schema.md) in the analysiskit package.
 - No `renv` lockfile for local development. `manifest.json` covers deployment.

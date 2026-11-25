@@ -9,7 +9,9 @@
 find_app_dir <- function(start = ".", levels = 4L) {
   path <- normalizePath(start, mustWork = FALSE)
   for (i in seq_len(levels)) {
-    if (file.exists(file.path(path, "app.R"))) return(path)
+    if (file.exists(file.path(path, "app.R"))) {
+      return(path)
+    }
     path <- dirname(path)
   }
   NA_character_
@@ -32,7 +34,10 @@ ui_text <- function(x) paste(as.character(unlist(x)), collapse = " ")
 # below it; this is the shape parseDirPath() reads back.
 pick_folder <- function(path) {
   relative <- sub(paste0("^", path.expand("~"), "/?"), "", path)
-  list(root = "Home", path = as.list(c("", strsplit(relative, "/", fixed = TRUE)[[1]])))
+  list(
+    root = "Home",
+    path = as.list(c("", strsplit(relative, "/", fixed = TRUE)[[1]]))
+  )
 }
 
 # A fresh, writable folder under Home, so the picker has something real to
@@ -47,7 +52,8 @@ test_destination_root <- function() {
 
 temp_destination <- function() {
   path <- file.path(
-    test_destination_root(), paste0("run_", as.integer(runif(1, 1, 1e9)))
+    test_destination_root(),
+    paste0("run_", as.integer(runif(1, 1, 1e9)))
   )
   dir.create(path, recursive = TRUE, showWarnings = FALSE)
   path
@@ -154,8 +160,11 @@ test_that("the variable check compares the workbook against the dataset just rea
   sheets$analysis <- rbind(
     sheets$analysis,
     data.frame(
-      analysis_type = "prop_select_one", analysis_var = "Q999",
-      level = NA_real_, sector = "Other", stringsAsFactors = FALSE
+      analysis_type = "prop_select_one",
+      analysis_var = "Q999",
+      level = NA_real_,
+      section = "Other",
+      stringsAsFactors = FALSE
     )
   )
 
@@ -328,7 +337,9 @@ test_that("clicking run produces results and saves a workbook to the chosen fold
   destination <- temp_destination()
 
   shiny::testServer(app_dir, {
-    session$setInputs(dataset = upload(dataset_file(fixture_dataset(40)), "round_9.xlsx"))
+    session$setInputs(
+      dataset = upload(dataset_file(fixture_dataset(40)), "round_9.xlsx")
+    )
     session$setInputs(loa = upload(loa_file()))
     session$setInputs(folder = pick_folder(destination))
     expect_true(ak_can_run(step_states()))
@@ -460,14 +471,22 @@ test_that("served, the workbook is built in the session temp folder and offered 
       # Nowhere the user might mistake for storage, and nowhere another
       # session on the same instance is looking either.
       expect_true(
-        startsWith(normalizePath(dirname(saved_path())), normalizePath(tempdir()))
+        startsWith(
+          normalizePath(dirname(saved_path())),
+          normalizePath(tempdir())
+        )
       )
       expect_equal(dirname(saved_path()), session_output_dir)
 
-      expect_match(ui_text(output$download_control), "Download the results workbook")
+      expect_match(
+        ui_text(output$download_control),
+        "Download the results workbook"
+      )
       expect_match(ui_text(output$results_status), "Download")
       expect_match(
-        output$results_summary, "Download using the button above", fixed = TRUE
+        output$results_summary,
+        "Download using the button above",
+        fixed = TRUE
       )
       # The row is named after what happens, not after a choice the user is
       # not being offered.
@@ -580,7 +599,10 @@ test_that("served, the output folder belongs to this session alone", {
 
       # Specifically not the one folder every session used to share.
       expect_false(
-        identical(session_output_dir, file.path(tempdir(), "analysiskit-output"))
+        identical(
+          session_output_dir,
+          file.path(tempdir(), "analysiskit-output")
+        )
       )
     })
   })
@@ -615,7 +637,10 @@ test_that("the download is offered locally too, alongside the saved copy", {
       session$setInputs(run = 1)
 
       expect_equal(dirname(saved_path()), destination)
-      expect_match(ui_text(output$download_control), "Download the results workbook")
+      expect_match(
+        ui_text(output$download_control),
+        "Download the results workbook"
+      )
     })
   })
 })
@@ -637,7 +662,11 @@ test_that("the List of Analysis template is downloadable from the app", {
   # The link is the only route to the template for anyone using a deployed
   # copy, who has no access to the repository. It ships with analysiskit, so
   # the template always matches the analysis code the app is running.
-  expect_true(nzchar(system.file("extdata", "loa_template.xlsx", package = "analysiskit")))
+  expect_true(nzchar(system.file(
+    "extdata",
+    "loa_template.xlsx",
+    package = "analysiskit"
+  )))
 
   shiny::testServer(app_dir, {
     # testServer runs the handler and hands back the path it wrote to.
@@ -649,5 +678,14 @@ test_that("the List of Analysis template is downloadable from the app", {
 
     skip_if_not_installed("readxl")
     expect_true("analysis_variables" %in% readxl::excel_sheets(written))
+
+    # The served template reads back cleanly: its description rows are
+    # skipped and its columns carry their current names.
+    wb <- analysiskit::read_loa_workbook(written)
+    expect_equal(nrow(analysiskit::validate_loa(wb)), 0L)
+    expect_true(all(
+      c("section", "sample_base", "na_label") %in%
+        names(wb$sheets$analysis_variables)
+    ))
   })
 })
