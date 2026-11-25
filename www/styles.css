@@ -581,9 +581,6 @@ a:focus {
   margin-bottom: 0;
 }
 
-.ak-checks-run {
-  margin: 4px 0 8px;
-}
 
 @media (max-width: 600px) {
   .ak-nav .ak-nav-label {
@@ -685,4 +682,25 @@ a:focus {
   background-color: var(--mmc-red);
   border-color: var(--mmc-red);
   content: "\00D7";
+}
+
+/* The Checks tab's "Run" heading, with Run analyses on the same line */
+.ak-run-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: center;
+  margin: 20px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--mmc-light-teal);
+}
+
+.ak-run-heading h3 {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ak-run-heading .btn {
+  font-weight: 600;
 }

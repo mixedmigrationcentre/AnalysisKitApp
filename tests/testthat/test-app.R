@@ -118,11 +118,7 @@ test_that("a dataset upload is read, profiled and advances the tracker", {
     expect_equal(step_states()[["dataset"]], "done")
     expect_equal(step_states()[["loa"]], "active")
 
-    # The column profile and preview were dead code until now; assert they
-    # actually render rather than trusting the UI wiring.
     expect_match(output$dataset_overview, "4mi_export.xlsx")
-    expect_match(output$dataset_columns, "Q27")
-    expect_match(output$dataset_preview, "Female")
 
     expect_match(ui_text(output$status), "Upload a List of Analysis")
   })
@@ -194,8 +190,17 @@ test_that("the variable check compares the workbook against the dataset just rea
     # A missing analysis variable costs a row, not correctness, so the run is
     # still offered.
     expect_equal(step_states()[["checks"]], "warning")
+    # A warning does not hide the Checks tab's Run analyses button; with no
+    # folder chosen yet it is shown greyed out.
+    expect_match(ui_text(output$checks_run_control), 'id="run"', fixed = TRUE)
+    expect_match(ui_text(output$checks_run_control), "disabled", fixed = TRUE)
     session$setInputs(folder = pick_folder(temp_destination()))
     expect_true(ak_can_run(step_states()))
+    expect_no_match(
+      ui_text(output$checks_run_control),
+      "disabled",
+      fixed = TRUE
+    )
   })
 })
 
@@ -212,12 +217,15 @@ test_that("the check reruns when a different dataset is uploaded", {
     session$setInputs(loa = upload(loa_file()))
     session$setInputs(folder = pick_folder(temp_destination()))
     expect_true(ak_can_run(step_states()))
+    expect_match(ui_text(output$checks_run_control), 'id="run"', fixed = TRUE)
 
     session$setInputs(dataset = upload(dataset_file(other)))
 
     expect_true(loa_has_errors(loa_problems()))
     expect_equal(step_states()[["checks"]], "error")
     expect_false(ak_can_run(step_states()))
+    # An error hides the Run analyses button.
+    expect_equal(trimws(ui_text(output$checks_run_control)), "")
     expect_match(ui_text(output$status), "must be fixed before running")
   })
 })

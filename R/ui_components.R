@@ -258,3 +258,24 @@ ak_tab_states <- function(
     "Results" = if (results_ready) "done" else "todo"
   )
 }
+
+
+#' The Checks Tab's Run Section
+#'
+#' The "Run" heading with the Run analyses button on the same line, at its
+#' right. The button is the `checks_run_control` output, which renders only
+#' when nothing blocks the run.
+#'
+#' @param ... Content under the heading.
+#' @return A Shiny tag.
+ak_run_section <- function(...) {
+  shiny::tags$div(
+    class = "dataset-section",
+    shiny::tags$div(
+      class = "ak-run-heading",
+      shiny::tags$h3("Run"),
+      shiny::uiOutput("checks_run_control", inline = TRUE)
+    ),
+    ...
+  )
+}

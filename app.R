@@ -111,15 +111,7 @@ ui <- fluidPage(
       ),
       conditionalPanel(
         condition = "output.datasetReady",
-        ak_section("Dataset overview", tableOutput("dataset_overview")),
-        ak_section(
-          "Column profile",
-          div(class = "table-scroll", tableOutput("dataset_columns"))
-        ),
-        ak_section(
-          "First 10 rows",
-          div(class = "table-scroll", tableOutput("dataset_preview"))
-        )
+        ak_section("Dataset overview", tableOutput("dataset_overview"))
       ),
       ak_tab_nav(nxt = "List of Analysis")
     ),
@@ -139,11 +131,7 @@ ui <- fluidPage(
     ),
     tabPanel(
       "Checks",
-      ak_section(
-        "Run",
-        uiOutput("run_hint"),
-        uiOutput("checks_run_control")
-      ),
+      ak_run_section(uiOutput("run_hint")),
       conditionalPanel(
         condition = "output.loaReady",
         ak_section(
@@ -570,22 +558,6 @@ server <- function(input, output, session) {
     dataset_overview(result)
   })
 
-  output$dataset_columns <- ak_table({
-    result <- uploaded_dataset()
-    validate(need(!inherits(result, "dataset_error"), result$message))
-    dataset_columns(result)
-  })
-
-  output$dataset_preview <- ak_table(
-    {
-      result <- uploaded_dataset()
-      validate(need(!inherits(result, "dataset_error"), result$message))
-      utils::head(result$data, 10L)
-    },
-    spacing = "xs",
-    rownames = TRUE
-  )
-
   # ---------------------------------------------------------------------------
   # List of Analysis tab
   # ---------------------------------------------------------------------------
@@ -697,22 +669,25 @@ server <- function(input, output, session) {
   # Running
   # ---------------------------------------------------------------------------
 
-  # The Checks tab offers the run only once everything has passed; until then
-  # run_hint says what is still missing.
+  # Beside the Checks tab's "Run" heading. Shown once the checks have run and
+  # found no problem to fix (warnings are fine); hidden while there is an
+  # error. Greyed out until the rest is in place - the output folder, locally -
+  # and run_hint says what that is.
   output$checks_run_control <- renderUI({
-    if (!ak_can_run(step_states())) {
+    states <- step_states()
+    if (!unname(states[["checks"]]) %in% c("done", "warning")) {
       return(tagList())
     }
     button <- actionButton(
       "run",
       if (running()) "Running..." else "Run analyses",
-      class = "btn-primary btn-lg",
+      class = "btn-primary",
       icon = icon("play")
     )
-    if (running()) {
+    if (!ak_can_run(states) || running()) {
       button <- tagAppendAttributes(button, disabled = NA)
     }
-    tags$div(class = "ak-checks-run", button)
+    button
   })
 
   output$run_hint <- renderUI({
