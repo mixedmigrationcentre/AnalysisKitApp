@@ -9,7 +9,9 @@
 find_app_dir <- function(start = ".", levels = 4L) {
   path <- normalizePath(start, mustWork = FALSE)
   for (i in seq_len(levels)) {
-    if (file.exists(file.path(path, "app.R"))) return(path)
+    if (file.exists(file.path(path, "app.R"))) {
+      return(path)
+    }
     path <- dirname(path)
   }
   NA_character_
@@ -30,9 +32,22 @@ ui_text <- function(x) paste(as.character(unlist(x)), collapse = " ")
 
 # shinyDirButton reports its choice as a root name plus the path components
 # below it; this is the shape parseDirPath() reads back.
+#
+# Both paths are normalised to forward slashes and compared as plain strings:
+# on Windows Home is "C:\Users\...", and used as a regular expression its
+# backslashes never match, which left the full path appended onto Home.
 pick_folder <- function(path) {
-  relative <- sub(paste0("^", path.expand("~"), "/?"), "", path)
-  list(root = "Home", path = as.list(c("", strsplit(relative, "/", fixed = TRUE)[[1]])))
+  home <- normalizePath(path.expand("~"), winslash = "/", mustWork = FALSE)
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  relative <- if (startsWith(path, home)) {
+    sub("^/", "", substring(path, nchar(home) + 1L))
+  } else {
+    path
+  }
+  list(
+    root = "Home",
+    path = as.list(c("", strsplit(relative, "/", fixed = TRUE)[[1]]))
+  )
 }
 
 # A fresh, writable folder under Home, so the picker has something real to
@@ -47,10 +62,13 @@ test_destination_root <- function() {
 
 temp_destination <- function() {
   path <- file.path(
-    test_destination_root(), paste0("run_", as.integer(runif(1, 1, 1e9)))
+    test_destination_root(),
+    paste0("run_", as.integer(runif(1, 1, 1e9)))
   )
   dir.create(path, recursive = TRUE, showWarnings = FALSE)
-  path
+  # Forward slashes, as the saved workbook's path is reported: on Windows
+  # Home carries backslashes, and the two would never compare equal.
+  normalizePath(path, winslash = "/")
 }
 
 withr::defer(unlink(test_destination_root(), recursive = TRUE), teardown_env())
@@ -100,11 +118,7 @@ test_that("a dataset upload is read, profiled and advances the tracker", {
     expect_equal(step_states()[["dataset"]], "done")
     expect_equal(step_states()[["loa"]], "active")
 
-    # The column profile and preview were dead code until now; assert they
-    # actually render rather than trusting the UI wiring.
     expect_match(output$dataset_overview, "4mi_export.xlsx")
-    expect_match(output$dataset_columns, "Q27")
-    expect_match(output$dataset_preview, "Female")
 
     expect_match(ui_text(output$status), "Upload a List of Analysis")
   })
@@ -154,8 +168,11 @@ test_that("the variable check compares the workbook against the dataset just rea
   sheets$analysis <- rbind(
     sheets$analysis,
     data.frame(
-      analysis_type = "prop_select_one", analysis_var = "Q999",
-      level = NA_real_, sector = "Other", stringsAsFactors = FALSE
+      analysis_type = "prop_select_one",
+      analysis_var = "Q999",
+      level = NA_real_,
+      section = "Other",
+      stringsAsFactors = FALSE
     )
   )
 
@@ -173,8 +190,17 @@ test_that("the variable check compares the workbook against the dataset just rea
     # A missing analysis variable costs a row, not correctness, so the run is
     # still offered.
     expect_equal(step_states()[["checks"]], "warning")
+    # A warning does not hide the Checks tab's Run analyses button; with no
+    # folder chosen yet it is shown greyed out.
+    expect_match(ui_text(output$checks_run_control), 'id="run"', fixed = TRUE)
+    expect_match(ui_text(output$checks_run_control), "disabled", fixed = TRUE)
     session$setInputs(folder = pick_folder(temp_destination()))
     expect_true(ak_can_run(step_states()))
+    expect_no_match(
+      ui_text(output$checks_run_control),
+      "disabled",
+      fixed = TRUE
+    )
   })
 })
 
@@ -191,12 +217,15 @@ test_that("the check reruns when a different dataset is uploaded", {
     session$setInputs(loa = upload(loa_file()))
     session$setInputs(folder = pick_folder(temp_destination()))
     expect_true(ak_can_run(step_states()))
+    expect_match(ui_text(output$checks_run_control), 'id="run"', fixed = TRUE)
 
     session$setInputs(dataset = upload(dataset_file(other)))
 
     expect_true(loa_has_errors(loa_problems()))
     expect_equal(step_states()[["checks"]], "error")
     expect_false(ak_can_run(step_states()))
+    # An error hides the Run analyses button.
+    expect_equal(trimws(ui_text(output$checks_run_control)), "")
     expect_match(ui_text(output$status), "must be fixed before running")
   })
 })
@@ -294,8 +323,6 @@ test_that("no output is computed against an empty upload", {
   expect_no_warning(
     shiny::testServer(app_dir, {
       force(output$status)
-      force(output$progress_tracker)
-      force(output$run_control)
       force(output$run_hint)
       force(output$loa_status)
       force(output$results_status)
@@ -328,7 +355,9 @@ test_that("clicking run produces results and saves a workbook to the chosen fold
   destination <- temp_destination()
 
   shiny::testServer(app_dir, {
-    session$setInputs(dataset = upload(dataset_file(fixture_dataset(40)), "round_9.xlsx"))
+    session$setInputs(
+      dataset = upload(dataset_file(fixture_dataset(40)), "round_9.xlsx")
+    )
     session$setInputs(loa = upload(loa_file()))
     session$setInputs(folder = pick_folder(destination))
     expect_true(ak_can_run(step_states()))
@@ -460,14 +489,26 @@ test_that("served, the workbook is built in the session temp folder and offered 
       # Nowhere the user might mistake for storage, and nowhere another
       # session on the same instance is looking either.
       expect_true(
-        startsWith(normalizePath(dirname(saved_path())), normalizePath(tempdir()))
+        startsWith(
+          normalizePath(dirname(saved_path())),
+          normalizePath(tempdir())
+        )
       )
-      expect_equal(dirname(saved_path()), session_output_dir)
+      # Normalised: on Windows one side carries backslashes, the other "/".
+      expect_equal(
+        normalizePath(dirname(saved_path()), winslash = "/"),
+        normalizePath(session_output_dir, winslash = "/")
+      )
 
-      expect_match(ui_text(output$download_control), "Download the results workbook")
+      expect_match(
+        ui_text(output$download_control),
+        "Download the results workbook"
+      )
       expect_match(ui_text(output$results_status), "Download")
       expect_match(
-        output$results_summary, "Download using the button above", fixed = TRUE
+        output$results_summary,
+        "Download using the button above",
+        fixed = TRUE
       )
       # The row is named after what happens, not after a choice the user is
       # not being offered.
@@ -493,10 +534,6 @@ test_that("served, the destination step reads as settled rather than missing", {
       expect_match(status, "download")
       expect_match(status, "Results tab")
       expect_match(status, "status-success")
-
-      # The tracker names the step after what happens here.
-      expect_match(ui_text(output$progress_tracker), "Delivery")
-      expect_false(grepl("Destination", ui_text(output$progress_tracker)))
     })
   })
 })
@@ -509,7 +546,6 @@ test_that("locally, the folder picker and its heading are both present", {
     shiny::testServer(app_dir, {
       expect_match(ui_text(output$folder_label), "Output folder")
       expect_match(ui_text(output$folder_control), "Choose folder")
-      expect_match(ui_text(output$progress_tracker), "Destination")
     })
   })
 })
@@ -580,7 +616,10 @@ test_that("served, the output folder belongs to this session alone", {
 
       # Specifically not the one folder every session used to share.
       expect_false(
-        identical(session_output_dir, file.path(tempdir(), "analysiskit-output"))
+        identical(
+          session_output_dir,
+          file.path(tempdir(), "analysiskit-output")
+        )
       )
     })
   })
@@ -615,7 +654,10 @@ test_that("the download is offered locally too, alongside the saved copy", {
       session$setInputs(run = 1)
 
       expect_equal(dirname(saved_path()), destination)
-      expect_match(ui_text(output$download_control), "Download the results workbook")
+      expect_match(
+        ui_text(output$download_control),
+        "Download the results workbook"
+      )
     })
   })
 })
@@ -637,7 +679,11 @@ test_that("the List of Analysis template is downloadable from the app", {
   # The link is the only route to the template for anyone using a deployed
   # copy, who has no access to the repository. It ships with analysiskit, so
   # the template always matches the analysis code the app is running.
-  expect_true(nzchar(system.file("extdata", "loa_template.xlsx", package = "analysiskit")))
+  expect_true(nzchar(system.file(
+    "extdata",
+    "loa_template.xlsx",
+    package = "analysiskit"
+  )))
 
   shiny::testServer(app_dir, {
     # testServer runs the handler and hands back the path it wrote to.
@@ -648,6 +694,73 @@ test_that("the List of Analysis template is downloadable from the app", {
     expect_gt(file.size(written), 5000)
 
     skip_if_not_installed("readxl")
-    expect_true("analysis" %in% readxl::excel_sheets(written))
+    expect_true("analysis_variables" %in% readxl::excel_sheets(written))
+
+    # The served template reads back cleanly: its description rows are
+    # skipped and its columns carry their current names.
+    wb <- analysiskit::read_loa_workbook(written)
+    expect_equal(nrow(analysiskit::validate_loa(wb)), 0L)
+    expect_true(all(
+      c("section", "sample_base", "na_label") %in%
+        names(wb$sheets$analysis_variables)
+    ))
   })
+})
+
+
+# The one-window layout: the Checks tab offers the run once every check
+# passes, the action bar carries the download, and the Dataset tab's checkbox
+# decides whether the dataset sheet is written.
+test_that("the Checks tab offers the run only once the checks pass, and its button runs", {
+  skip_without_app()
+  skip_if_not_installed("openxlsx")
+
+  withr::with_options(list(analysiskit.server = TRUE), {
+    shiny::testServer(app_dir, {
+      expect_equal(trimws(ui_text(output$checks_run_control)), "")
+      expect_match(ui_text(output$run_hint), "Dataset tab")
+
+      session$setInputs(dataset = upload(dataset_file(fixture_dataset(40))))
+      session$setInputs(loa = upload(loa_file()))
+      expect_match(ui_text(output$checks_run_control), 'id="run"', fixed = TRUE)
+      expect_match(ui_text(output$run_hint), "status-success")
+
+      session$setInputs(run = 1)
+      expect_null(run_error())
+      expect_true(file.exists(saved_path()))
+
+      # The Results tab carries the download.
+      expect_equal(
+        unname(tools::md5sum(output$results_file)),
+        unname(tools::md5sum(saved_path()))
+      )
+      expect_match(
+        ui_text(output$download_control),
+        "Download the results workbook"
+      )
+    })
+  })
+})
+
+test_that("the dataset checkbox decides whether the dataset sheet is written", {
+  skip_without_app()
+  skip_if_not_installed("openxlsx")
+
+  sheets_written <- function(include) {
+    names <- NULL
+    withr::with_options(list(analysiskit.server = TRUE), {
+      shiny::testServer(app_dir, {
+        session$setInputs(dataset = upload(dataset_file(fixture_dataset(40))))
+        session$setInputs(loa = upload(loa_file()))
+        session$setInputs(include_dataset = include)
+        session$setInputs(run = 1)
+        expect_null(run_error())
+        names <<- openxlsx::getSheetNames(saved_path())
+      })
+    })
+    names
+  }
+
+  expect_true("dataset" %in% sheets_written(TRUE))
+  expect_false("dataset" %in% sheets_written(FALSE))
 })

@@ -11,45 +11,6 @@
 # No analysis and no validation happens here.
 # =============================================================================
 
-
-#' Render the Step Tracker
-#'
-#' A horizontal row of steps showing where the user is, which is the one piece
-#' of the interface that is always on screen.
-#'
-#' @param states A vector from \code{\link{ak_step_states}}.
-#' @param destination_label Label for the destination step, from
-#'   \code{\link{ak_destination_mode}}.
-#' @return A Shiny tag.
-#' @export
-ak_step_tracker <- function(states, destination_label = "Destination") {
-  steps <- ak_steps(destination_label)
-
-  symbol <- c(
-    todo = "○", active = "●", done = "✓",
-    warning = "!", error = "×"
-  )
-
-  items <- lapply(names(steps), function(id) {
-    state <- states[[id]]
-    shiny::tags$li(
-      class = paste0("ak-step ak-step-", state),
-      # The shape carries the state as well as the colour, so the tracker is
-      # still readable without relying on colour alone.
-      shiny::tags$span(class = "ak-step-mark", symbol[[state]]),
-      shiny::tags$span(class = "ak-step-label", steps[[id]])
-    )
-  })
-
-  shiny::tags$ol(
-    class = "ak-steps",
-    role = "list",
-    `aria-label` = "Workflow progress",
-    items
-  )
-}
-
-
 #' Render a Row of Severity Badges
 #' @param counts A vector from \code{\link{ak_problem_counts}}.
 #' @return A Shiny tag.
@@ -159,7 +120,10 @@ ak_engine_note <- function(split) {
 #' @return A Shiny tag; empty when every respondent who answered is in the base.
 #' @export
 ak_exclusive_base_panel <- function(...) {
-  notes <- unique(unlist(lapply(list(...), ak_exclusive_base_note), use.names = FALSE))
+  notes <- unique(unlist(
+    lapply(list(...), ak_exclusive_base_note),
+    use.names = FALSE
+  ))
   if (length(notes) == 0) {
     return(shiny::tagList())
   }
@@ -187,6 +151,131 @@ ak_section <- function(title, ...) {
   shiny::tags$div(
     class = "dataset-section",
     shiny::tags$h3(title),
+    ...
+  )
+}
+
+
+#' Short Help Text Under a Control
+#' @param ... Text.
+#' @return A Shiny tag.
+ak_help <- function(...) {
+  shiny::tags$p(class = "ak-help", ...)
+}
+
+
+#' The Script Behind the Previous / Next Buttons
+#'
+#' Opens a main tab by its title and scrolls back to the top of the tabs.
+#'
+#' @return A script tag.
+ak_nav_script <- function() {
+  shiny::tags$script(shiny::HTML(
+    "function akShowTab(value) {
+       $('#panels a[data-value=\"' + value + '\"]').tab('show');
+       window.scrollTo({top: Math.max($('#panels').offset().top - 12, 0), behavior: 'smooth'});
+     }"
+  ))
+}
+
+
+#' Previous / Next Buttons at the Foot of a Tab
+#'
+#' @param prev,nxt Titles of the tabs either side, or `NULL` for none.
+#' @return A Shiny tag.
+ak_tab_nav <- function(prev = NULL, nxt = NULL) {
+  button <- function(direction, target) {
+    if (is.null(target)) {
+      return(NULL)
+    }
+    is_prev <- direction == "prev"
+    shiny::tags$button(
+      type = "button",
+      class = paste0("btn btn-default ak-nav-", direction),
+      onclick = sprintf("akShowTab('%s')", target),
+      if (is_prev) shiny::icon("arrow-left"),
+      shiny::tags$span(
+        class = "ak-nav-label",
+        paste0(if (is_prev) "Previous: " else "Next: ", target)
+      ),
+      if (!is_prev) shiny::icon("arrow-right")
+    )
+  }
+
+  shiny::tags$nav(
+    class = "ak-nav ak-nav-bottom",
+    `aria-label` = "Move between tabs",
+    shiny::tags$div(class = "ak-nav-side", button("prev", prev)),
+    shiny::tags$div(class = "ak-nav-side ak-nav-side-next", button("next", nxt))
+  )
+}
+
+
+#' The State of Each Main Tab
+#'
+#' Drives the mark on each tab: `warning` (its number, in yellow), `error` (a
+#' red cross); `done` and `todo` both show its plain number. Pure, so it can be
+#' tested without a browser.
+#'
+#' @param dataset_ok,dataset_failed Logical: the dataset loaded / failed.
+#' @param loa_ok,loa_failed Logical: the List of Analysis loaded / failed.
+#' @param problems The problems table, or `NULL` before anything is checked.
+#' @param results_ready Logical.
+#' @return A named character vector, one state per tab title.
+ak_tab_states <- function(
+  dataset_ok,
+  dataset_failed,
+  loa_ok,
+  loa_failed,
+  problems,
+  results_ready
+) {
+  counts <- if (is.null(problems)) NULL else ak_problem_counts(problems)
+  c(
+    "Dataset" = if (dataset_ok) {
+      "done"
+    } else if (dataset_failed) {
+      "error"
+    } else {
+      "todo"
+    },
+    "List of Analysis" = if (loa_ok) {
+      "done"
+    } else if (loa_failed) {
+      "error"
+    } else {
+      "todo"
+    },
+    "Checks" = if (is.null(counts)) {
+      "todo"
+    } else if (counts[["error"]] > 0L) {
+      "error"
+    } else if (counts[["warning"]] > 0L) {
+      "warning"
+    } else {
+      "done"
+    },
+    "Results" = if (results_ready) "done" else "todo"
+  )
+}
+
+
+#' The Checks Tab's Run Section
+#'
+#' The "Run" heading with the Run analyses button on the same line, at its
+#' right. The button is the `checks_run_control` output, which renders only
+#' when nothing blocks the run.
+#'
+#' @param ... Content under the heading.
+#' @return A Shiny tag.
+ak_run_section <- function(...) {
+  shiny::tags$div(
+    class = "dataset-section",
+    shiny::tags$div(
+      class = "ak-run-heading",
+      shiny::tags$h3("Run"),
+      shiny::uiOutput("checks_run_control", inline = TRUE)
+    ),
     ...
   )
 }

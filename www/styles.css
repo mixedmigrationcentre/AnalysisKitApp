@@ -493,3 +493,214 @@ a:focus {
 .ak-caveat li + li {
   margin-top: 3px;
 }
+
+.tab-content {
+  padding-top: 18px;
+}
+
+.ak-help {
+  margin: -4px 0 12px;
+  color: #4a6b7c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Run, and once a run has saved a workbook, its download beside it */
+.ak-run-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-primary.ak-download-side,
+.btn-primary.ak-download-side:focus {
+  background-color: var(--mmc-teal);
+  border-color: var(--mmc-teal);
+}
+
+.btn-primary.ak-download-side:hover,
+.btn-primary.ak-download-side:active {
+  background-color: var(--mmc-navy);
+  border-color: var(--mmc-navy);
+}
+
+/* --------------------------------------------------------------------------
+   One-window layout: Previous / Next at the foot of each tab, and the file
+   inputs on the Dataset tab.
+   -------------------------------------------------------------------------- */
+.ak-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ak-nav-bottom {
+  margin: 24px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--mmc-light-teal);
+}
+
+.ak-nav .btn {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.ak-nav-bottom .ak-nav-side-next {
+  margin-left: auto;
+}
+
+.ak-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.ak-input-card {
+  padding: 14px 16px 4px;
+  background-color: var(--mmc-pale-teal);
+  border-radius: 4px;
+}
+
+.ak-input-card .ak-template {
+  margin: -8px 0 12px;
+}
+
+.ak-input-card .status-message {
+  margin: 10px 0 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background-color: #fff;
+}
+
+.ak-input-card.ak-destination {
+  margin-bottom: 0;
+}
+
+
+@media (max-width: 600px) {
+  .ak-nav .ak-nav-label {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   The main tabs as numbered steps
+   A pale-teal band; each tab carries a numbered circle, which turns yellow
+   when its part has a warning and becomes a red cross when it has a problem.
+   The active tab is filled navy.
+   -------------------------------------------------------------------------- */
+#panels.nav-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 6px 6px 0;
+  background-color: var(--mmc-pale-teal);
+  border-bottom: 3px solid var(--mmc-navy);
+  border-radius: 6px 6px 0 0;
+  counter-reset: ak-tab;
+}
+
+#panels.nav-tabs > li {
+  float: none;
+  margin-bottom: 0;
+}
+
+#panels.nav-tabs > li > a {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: 0;
+  padding: 9px 14px;
+  font-weight: 600;
+  color: var(--mmc-navy);
+  background-color: #fff;
+  border: 1px solid var(--mmc-light-teal);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  box-shadow: none;
+}
+
+#panels.nav-tabs > li > a::before {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mmc-teal);
+  background-color: #fff;
+  border: 2px solid var(--mmc-teal);
+  border-radius: 50%;
+  counter-increment: ak-tab;
+  content: counter(ak-tab);
+}
+
+#panels.nav-tabs > li > a:hover,
+#panels.nav-tabs > li > a:focus {
+  background-color: var(--mmc-light-teal);
+  border-color: var(--mmc-teal);
+}
+
+#panels.nav-tabs > li.active > a,
+#panels.nav-tabs > li.active > a:hover,
+#panels.nav-tabs > li.active > a:focus {
+  color: #fff;
+  background-color: var(--mmc-navy);
+  border-color: var(--mmc-navy);
+  box-shadow: none;
+}
+
+#panels.nav-tabs > li.active > a::before {
+  color: var(--mmc-navy);
+  background-color: #fff;
+  border-color: #fff;
+}
+
+/* States set by the server (ak-tab-states in app.R). A finished tab keeps
+   its plain number; only a warning (yellow, still numbered) or an error (a
+   red cross) changes the mark. */
+#panels.nav-tabs > li.ak-tab-warning > a::before {
+  color: var(--mmc-navy);
+  background-color: var(--mmc-yellow);
+  border-color: var(--mmc-orange);
+}
+
+#panels.nav-tabs > li.ak-tab-error > a::before {
+  color: #fff;
+  background-color: var(--mmc-red);
+  border-color: var(--mmc-red);
+  content: "\00D7";
+}
+
+/* The Checks tab's "Run" heading, with Run analyses on the same line */
+.ak-run-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: center;
+  margin: 20px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--mmc-light-teal);
+}
+
+.ak-run-heading h3 {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ak-run-heading .btn {
+  font-weight: 600;
+}

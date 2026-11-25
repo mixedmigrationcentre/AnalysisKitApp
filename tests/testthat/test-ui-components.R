@@ -17,40 +17,6 @@ test_that("badges read as sentences and get the plural right", {
   )
 })
 
-test_that("every step state has a mark and renders", {
-  for (state in c("todo", "active", "done", "warning", "error")) {
-    states <- stats::setNames(rep(state, length(ak_steps())), names(ak_steps()))
-    html <- as.character(ak_step_tracker(states))
-
-    expect_match(html, paste0("ak-step-", state))
-    # The mark is what carries the state when colour is unavailable, so an
-    # unrendered state would be a silent accessibility regression.
-    expect_match(html, "ak-step-mark")
-  }
-})
-
-test_that("the tracker labels every step", {
-  html <- as.character(ak_step_tracker(ak_step_states()))
-  # The tracker passes its own destination label, "Destination" by default.
-  for (label in ak_steps("Destination")) {
-    expect_match(html, label, fixed = TRUE)
-  }
-})
-
-test_that("the destination step takes its label from the deployment", {
-  states <- ak_step_states()
-
-  expect_match(
-    as.character(ak_step_tracker(states)), "Destination", fixed = TRUE
-  )
-  # Served there is no destination to choose, so the step is named after what
-  # happens instead. The rest of the tracker is unaffected.
-  served <- as.character(ak_step_tracker(states, "Delivery"))
-  expect_match(served, "Delivery", fixed = TRUE)
-  expect_false(grepl("Destination", served, fixed = TRUE))
-  expect_match(served, "List of Analysis", fixed = TRUE)
-})
-
 test_that("status tones map to the stylesheet's classes", {
   expect_match(as.character(ak_status("x", "success")), "status-success")
   expect_match(as.character(ak_status("x", "warning")), "status-warning")
@@ -134,4 +100,29 @@ test_that("the note is silent when a level is set but no interval is reported", 
   split <- loa_engine_split(spec_with(c(0.95, 0.95), value_columns = c("stat", "n", "n_total")))
   expect_equal(split$survey, 0L)
   expect_length(ak_engine_note(split), 0L)
+})
+
+test_that("each main tab is marked from the files and what the checks found", {
+  none <- ak_tab_states(FALSE, FALSE, FALSE, FALSE, NULL, FALSE)
+  expect_equal(unname(none), rep("todo", 4L))
+  expect_equal(
+    names(none),
+    c("Dataset", "List of Analysis", "Checks", "Results")
+  )
+
+  problems <- data.frame(
+    sheet = "analysis",
+    severity = "warning",
+    row = 1L,
+    message = "check this"
+  )
+  expect_equal(
+    unname(ak_tab_states(TRUE, FALSE, TRUE, FALSE, problems, TRUE)),
+    c("done", "done", "warning", "done")
+  )
+  problems$severity <- "error"
+  expect_equal(
+    unname(ak_tab_states(FALSE, TRUE, FALSE, TRUE, problems, FALSE)),
+    c("error", "error", "error", "todo")
+  )
 })
