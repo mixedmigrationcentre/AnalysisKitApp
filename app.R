@@ -35,96 +35,144 @@ ui <- fluidPage(
       class = "app-logo"
     )
   ),
-  sidebarLayout(
-    sidebarPanel(
-      fileInput(
-        "dataset",
-        "Upload dataset",
-        accept = c(".csv", ".xlsx")
-      ),
-      fileInput(
-        "loa",
-        "Upload List of Analysis",
-        accept = c(".csv", ".xlsx")
-      ),
-      tags$div(
-        class = "ak-template",
-        downloadLink("template", "Download the List of Analysis template")
-      ),
-      tags$div(
-        class = "ak-destination",
-        # The heading is rendered rather than fixed: served, there is no folder
-        # to pick and "Output folder" over an empty space reads as a broken
-        # control. See the ak_destination_mode().
-        uiOutput("folder_label"),
-        uiOutput("folder_control"),
-        uiOutput("folder_status")
-      ),
-      uiOutput("run_control"),
-      uiOutput("run_hint")
-    ),
-    mainPanel(
-      uiOutput("progress_tracker"),
+  ak_nav_script(),
+  # Marks each main tab done / warning / error; see ak_tab_states().
+  tags$script(HTML(
+    "$(document).on('shiny:connected', function() {
+       Shiny.addCustomMessageHandler('ak-tab-states', function(states) {
+         $.each(states, function(tab, state) {
+           $('#panels a[data-value=\"' + tab + '\"]').parent()
+             .removeClass('ak-tab-todo ak-tab-done ak-tab-warning ak-tab-error')
+             .addClass('ak-tab-' + state);
+         });
+       });
+     });"
+  )),
+  # One window, no sidebar: the files and the output folder are on the
+  # Dataset tab, the run on the Checks tab, the download on the Results tab,
+  # and Previous / Next at the foot of each tab.
+  tabsetPanel(
+    id = "panels",
+    type = "tabs",
+    tabPanel(
+      "Dataset",
       uiOutput("status"),
-      tabsetPanel(
-        id = "panels",
-        type = "tabs",
-        tabPanel(
-          "Dataset",
-          conditionalPanel(
-            condition = "output.datasetReady",
-            ak_section("Dataset overview", tableOutput("dataset_overview")),
-            ak_section(
-              "Column profile",
-              div(class = "table-scroll", tableOutput("dataset_columns"))
-            ),
-            ak_section(
-              "First 10 rows",
-              div(class = "table-scroll", tableOutput("dataset_preview"))
-            )
-          )
+      ak_section(
+        "Results workbook",
+        checkboxInput(
+          "include_dataset",
+          "Save the dataset in the results workbook",
+          value = TRUE
         ),
-        tabPanel(
-          "List of Analysis",
-          uiOutput("loa_status"),
-          conditionalPanel(
-            condition = "output.loaReady",
-            ak_section("Sheets read", tableOutput("loa_sheets")),
-            ak_section(
-              "Checks",
-              uiOutput("check_badges"),
-              div(
-                class = "table-scroll ak-problems",
-                tableOutput("loa_problems")
+        ak_help(
+          "Adds the dataset as a sheet named dataset, after the analysis ",
+          "sheets. It is personal data: store and share the workbook ",
+          "accordingly. A List of Analysis that sets include_dataset ticks or ",
+          "clears this box when it is uploaded."
+        )
+      ),
+      ak_section(
+        "Files",
+        tags$div(
+          class = "ak-inputs-grid",
+          tags$div(
+            class = "ak-input-card",
+            fileInput(
+              "dataset",
+              "Upload dataset",
+              accept = c(".csv", ".xlsx")
+            )
+          ),
+          tags$div(
+            class = "ak-input-card",
+            fileInput(
+              "loa",
+              "Upload List of Analysis",
+              accept = c(".csv", ".xlsx")
+            ),
+            tags$div(
+              class = "ak-template",
+              downloadLink(
+                "template",
+                "Download the List of Analysis template"
               )
-            ),
-            ak_section("Estimation engine", uiOutput("engine_note")),
-            ak_section(
-              "Variable coverage",
-              uiOutput("coverage_note"),
-              div(class = "table-scroll", tableOutput("coverage_table"))
             )
-          )
-        ),
-        tabPanel(
-          "Results",
-          uiOutput("results_status"),
-          conditionalPanel(
-            condition = "output.resultsReady",
-            uiOutput("exclusive_note"),
-            ak_section(
-              "Analyses run",
-              uiOutput("download_control"),
-              tableOutput("results_summary")
-            ),
-            ak_section(
-              "Results preview",
-              div(class = "table-scroll", tableOutput("results_preview"))
-            ),
-            ak_section("Run log", uiOutput("run_log"))
+          ),
+          tags$div(
+            class = "ak-input-card ak-destination",
+            # The heading is rendered rather than fixed: served, there is no
+            # folder to pick and "Output folder" over an empty space reads as
+            # a broken control. See ak_destination_mode().
+            uiOutput("folder_label"),
+            uiOutput("folder_control"),
+            uiOutput("folder_status")
           )
         )
-      )
+      ),
+      conditionalPanel(
+        condition = "output.datasetReady",
+        ak_section("Dataset overview", tableOutput("dataset_overview")),
+        ak_section(
+          "Column profile",
+          div(class = "table-scroll", tableOutput("dataset_columns"))
+        ),
+        ak_section(
+          "First 10 rows",
+          div(class = "table-scroll", tableOutput("dataset_preview"))
+        )
+      ),
+      ak_tab_nav(nxt = "List of Analysis")
+    ),
+    tabPanel(
+      "List of Analysis",
+      uiOutput("loa_status"),
+      conditionalPanel(
+        condition = "output.loaReady",
+        ak_section("Sheets read", tableOutput("loa_sheets")),
+        ak_section(
+          "Variable coverage",
+          uiOutput("coverage_note"),
+          div(class = "table-scroll", tableOutput("coverage_table"))
+        )
+      ),
+      ak_tab_nav(prev = "Dataset", nxt = "Checks")
+    ),
+    tabPanel(
+      "Checks",
+      ak_section(
+        "Run",
+        uiOutput("run_hint"),
+        uiOutput("checks_run_control")
+      ),
+      conditionalPanel(
+        condition = "output.loaReady",
+        ak_section(
+          "Checks",
+          uiOutput("check_badges"),
+          div(
+            class = "table-scroll ak-problems",
+            tableOutput("loa_problems")
+          )
+        ),
+        ak_section("Estimation engine", uiOutput("engine_note"))
+      ),
+      ak_tab_nav(prev = "List of Analysis", nxt = "Results")
+    ),
+    tabPanel(
+      "Results",
+      uiOutput("download_control"),
+      uiOutput("results_status"),
+      conditionalPanel(
+        condition = "output.resultsReady",
+        uiOutput("exclusive_note"),
+        ak_section("Analyses run", tableOutput("results_summary")),
+        ak_section(
+          "Results preview",
+          div(class = "table-scroll", tableOutput("results_preview"))
+        ),
+        ak_section("Run log", uiOutput("run_log"))
+      ),
+      ak_tab_nav(prev = "Checks")
     )
   )
 )
@@ -212,6 +260,24 @@ server <- function(input, output, session) {
 
   output$loaReady <- reactive(loa_ok())
   outputOptions(output, "loaReady", suspendWhenHidden = FALSE)
+
+  # The Dataset tab's checkbox decides whether the dataset goes into the
+  # results workbook. A List of Analysis that sets include_dataset moves the
+  # box to its value when it is uploaded; after that the box is the user's.
+  include_dataset <- reactive(isTRUE(input$include_dataset))
+
+  observeEvent(loa_state(), {
+    req(loa_ok())
+    setting <- tryCatch(
+      loa_parse_settings(
+        uploaded_loa()$sheets$settings
+      )$settings$include_dataset,
+      error = function(error) NULL
+    )
+    if (!is.null(setting)) {
+      updateCheckboxInput(session, "include_dataset", value = isTRUE(setting))
+    }
+  })
 
   # ---------------------------------------------------------------------------
   # Checks
@@ -402,9 +468,15 @@ server <- function(input, output, session) {
     )
   })
 
-  output$progress_tracker <- renderUI(
-    ak_step_tracker(step_states(), destination_mode$step_label)
-  )
+  tab_states <- reactive(ak_tab_states(
+    dataset_ok = dataset_ok(),
+    dataset_failed = !is.null(input$dataset) && !dataset_ok(),
+    loa_ok = loa_ok(),
+    loa_failed = !is.null(input$loa) && !loa_ok(),
+    problems = if (dataset_ok() && loa_ok()) loa_problems() else NULL,
+    results_ready = !is.null(analysis_results())
+  ))
+  observe(session$sendCustomMessage("ak-tab-states", as.list(tab_states())))
 
   output$status <- renderUI({
     if (is.null(input$dataset)) {
@@ -452,7 +524,7 @@ server <- function(input, output, session) {
     if (counts[["error"]] > 0L) {
       return(ak_status(
         sprintf(
-          "The List of Analysis has %d problem(s) that must be fixed before running. See the List of Analysis tab.",
+          "The List of Analysis has %d problem(s) that must be fixed before running. See the Checks tab.",
           counts[["error"]]
         ),
         "error"
@@ -461,7 +533,7 @@ server <- function(input, output, session) {
     if (counts[["warning"]] > 0L) {
       return(ak_status(
         sprintf(
-          "Ready to run, with %d warning(s) worth reading first. See the List of Analysis tab.",
+          "Ready to run, with %d warning(s) worth reading first. See the Checks tab.",
           counts[["warning"]]
         ),
         "warning"
@@ -625,33 +697,40 @@ server <- function(input, output, session) {
   # Running
   # ---------------------------------------------------------------------------
 
-  output$run_control <- renderUI({
-    states <- step_states()
-    ready <- ak_can_run(states) && !running()
-
+  # The Checks tab offers the run only once everything has passed; until then
+  # run_hint says what is still missing.
+  output$checks_run_control <- renderUI({
+    if (!ak_can_run(step_states())) {
+      return(tagList())
+    }
     button <- actionButton(
       "run",
       if (running()) "Running..." else "Run analyses",
-      class = "btn-primary"
+      class = "btn-primary btn-lg",
+      icon = icon("play")
     )
-
-    if (ready) button else tagAppendAttributes(button, disabled = NA)
+    if (running()) {
+      button <- tagAppendAttributes(button, disabled = NA)
+    }
+    tags$div(class = "ak-checks-run", button)
   })
 
   output$run_hint <- renderUI({
     states <- step_states()
     if (identical(unname(states[["destination"]]), "active")) {
-      return(ak_status("Choose an output folder to enable the run."))
+      return(ak_status(
+        "Choose an output folder on the Dataset tab to enable the run."
+      ))
     }
-    # Served, the destination step no longer needs a hint here: it is settled,
-    # and its own status sits a few pixels above this. Repeating the same
-    # paragraph twice in a narrow sidebar made it read as an error.
     if (!ak_can_run(states)) {
-      return(ak_status("Upload both files and clear any problems to run."))
+      return(ak_status(
+        "Upload both files on the Dataset tab and clear any problems below to run."
+      ))
     }
-    # An empty tagList rather than NULL: renderUI(NULL) reaches htmltools as
-    # structure(NULL, ...), which is deprecated.
-    tagList()
+    ak_status(
+      "Every check needed to run has passed.",
+      "success"
+    )
   })
 
   analysis_results <- reactiveVal(NULL)
@@ -662,7 +741,7 @@ server <- function(input, output, session) {
   # eventReactive/observeEvent rather than a plain reactive: uploading or
   # editing an input must never silently rerun an expensive analysis, and it
   # must never silently write a file.
-  observeEvent(input$run, {
+  start_run <- function() {
     spec <- analysis_spec()
     dataset <- uploaded_dataset()$data
     dataset_name <- uploaded_dataset()$filename
@@ -773,10 +852,11 @@ server <- function(input, output, session) {
       # Only now, with a completed run in hand, is anything written to disk.
       setProgress(0.78, detail = "building the results workbook")
 
-      # The List of Analysis decides whether the dataset goes into the
-      # workbook (settings/include_dataset, FALSE by default). The upload is
-      # passed either way; ak_export_results() only writes it when asked to.
-      if (isTRUE(spec$settings$include_dataset)) {
+      # The Dataset tab's checkbox decides whether the dataset goes into the
+      # workbook (an uploaded List of Analysis can set it; see
+      # include_dataset above).
+      add_dataset <- include_dataset()
+      if (add_dataset) {
         note("The dataset will be added to the workbook as a 'dataset' sheet")
         flush_log()
       }
@@ -789,6 +869,7 @@ server <- function(input, output, session) {
             folder = folder,
             dataset_name = dataset_name,
             dataset = dataset,
+            include_dataset = add_dataset,
             verbose = TRUE
           ),
           error = function(error) {
@@ -827,7 +908,9 @@ server <- function(input, output, session) {
       note(paste0("Saved to ", written))
       flush_log()
     })
-  })
+  }
+
+  observeEvent(input$run, start_run())
 
   output$resultsReady <- reactive(!is.null(analysis_results()))
   outputOptions(output, "resultsReady", suspendWhenHidden = FALSE)

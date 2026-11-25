@@ -2817,7 +2817,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "dfbaa0920b900e204b7a7dbf8e9f3f6f"
+      "checksum": "8bc5948ccc6dfd2c854b759f9a6d23c4"
     },
     "R/deployment.R": {
       "checksum": "27e8477909a1dddc70772b945b08e62d"
@@ -2826,13 +2826,13 @@
       "checksum": "3d51c5750612918fe48239126fa38f47"
     },
     "R/ui_components.R": {
-      "checksum": "f178392a90588c3fbc47b26bfe51bc0d"
+      "checksum": "bd9fab0380658cdb0d9866990b5ef961"
     },
     "www/logo.png": {
       "checksum": "ecfbb0ed4014f6f6f73297931e3e0d82"
     },
     "www/styles.css": {
-      "checksum": "38d7252e4712fbff1a6f9b3921077844"
+      "checksum": "6f8f63cd2f436b21444b3aa0e3398d6e"
     }
   },
   "users": null
