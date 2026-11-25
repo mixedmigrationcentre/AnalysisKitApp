@@ -648,6 +648,6 @@ test_that("the List of Analysis template is downloadable from the app", {
     expect_gt(file.size(written), 5000)
 
     skip_if_not_installed("readxl")
-    expect_true("analysis" %in% readxl::excel_sheets(written))
+    expect_true("analysis_variables" %in% readxl::excel_sheets(written))
   })
 })

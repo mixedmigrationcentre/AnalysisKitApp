@@ -99,7 +99,7 @@ touching a calculation:
 - `min_group_n` drops group levels with too few interviews to report. A 200-town
   disaggregation usually has a long tail of towns with a handful of interviews,
   and those columns are neither publishable nor free.
-- Fewer grouping variables in `group_analysis`, when a round does not need all
+- Fewer grouping variables in `disaggregation_variables`, when a round does not need all
   of them.
 
 Splitting sheets by grouping variable does *not* help: it writes the same cells
